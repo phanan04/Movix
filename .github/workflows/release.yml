@@ -19,18 +19,25 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
+
+      - name: Prepare Android local.properties
+        run: |
+          mkdir -p app/android
+          echo "flutter.sdk=$FLUTTER_ROOT" > app/android/local.properties
 
       - name: Get Dependencies
         working-directory: app
@@ -43,9 +50,9 @@ jobs:
       - name: Locate APK
         id: locate_apk
         run: |
-          APK_PATH=$(find . -name "*release*.apk" | head -n 1)
+          APK_PATH=$(find . -type f -name "*release*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "Error: APK not found!"
+            echo "Error: Release APK not found!"
             find . -name "*.apk" || true
             exit 1
           fi
@@ -63,10 +70,23 @@ jobs:
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: ${{ steps.locate_apk.outputs.apk_path }}
           tag_name: ${{ steps.determine_tag.outputs.tag_name }}
           name: Movix Release ${{ steps.determine_tag.outputs.tag_name }}
+          body: |
+            ## Movix - Ứng dụng xem phim trực tuyến hiện đại (Flutter)
+            
+            ### 📦 Tải file cài đặt:
+            - **Android APK**: Tải file `app-release.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
+            
+            ### ✨ Tính năng:
+            - Đăng nhập tài khoản Google (Firebase Authentication).
+            - Trình phát video chuyên nghiệp: cử chỉ chạm đúp tua, nhấn giữ x2 tốc độ, bỏ qua intro, chuyển tập tự động.
+            - Hỗ trợ đa máy chủ HLS Siêu Tốc & Dự Phòng.
+            - Giao diện Dark theme Movix cao cấp.
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false

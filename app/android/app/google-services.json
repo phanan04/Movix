@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "453442498600",
+    "project_id": "movix-766ca",
+    "storage_bucket": "movix-766ca.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:453442498600:android:641d87d10a03f2b9b6451d",
+        "android_client_info": {
+          "package_name": "com.twophim.movix.movix"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "453442498600-vg7eijnbh2mtultb4uo92cn1mektab7c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhazTZIjROhTIBcpcskEyERCJHMKtkBcY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "453442498600-vg7eijnbh2mtultb4uo92cn1mektab7c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

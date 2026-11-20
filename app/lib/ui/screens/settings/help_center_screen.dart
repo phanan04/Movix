@@ -31,7 +31,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> with SingleTickerPr
     },
     {
       'q': 'Gói VIP trọn đời có mất phí không?',
-      'a': 'Hiện tại tài khoản VIP trên Movix hoàn toàn miễn phí trọn đời cho tất cả thành viên 2Phim.',
+      'a': 'Hiện tại tài khoản VIP trên Movix hoàn toàn miễn phí trọn đời cho tất cả thành viên Movix.',
     },
   ];
 
@@ -167,19 +167,19 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> with SingleTickerPr
         _buildContactTile(
           icon: Icons.email_outlined,
           title: 'Hỗ trợ kỹ thuật qua Email',
-          subtitle: 'support@2phim.app',
+          subtitle: 'support@movix.app',
         ),
         const SizedBox(height: 12),
         _buildContactTile(
           icon: Icons.language_rounded,
           title: 'Trang web cộng đồng',
-          subtitle: 'https://2phim.app',
+          subtitle: 'https://github.com/phanan04/Movix',
         ),
         const SizedBox(height: 12),
         _buildContactTile(
           icon: Icons.facebook,
           title: 'Fanpage chính thức',
-          subtitle: 'facebook.com/2phim.official',
+          subtitle: 'facebook.com/movix.official',
         ),
       ],
     );

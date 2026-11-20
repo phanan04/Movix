@@ -50,7 +50,7 @@ class MovixApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Movix 2Phim',
+      title: 'Movix',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: AppTheme.darkTheme,

@@ -438,7 +438,7 @@ class ProfileScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Bạn đang sử dụng phiên bản Movix 2Phim mới nhất (v1.0.0).',
+                'Bạn đang sử dụng phiên bản Movix mới nhất (v1.0.0).',
                 style: TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
               ),
               const SizedBox(height: 14),

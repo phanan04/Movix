@@ -32,7 +32,7 @@ class UserModel {
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '2Phim Member',
+      name: json['name']?.toString() ?? 'Thành viên Movix',
       email: json['email']?.toString() ?? '',
       avatarUrl: json['avatarUrl']?.toString() ?? '',
       authProvider: json['authProvider']?.toString() ?? 'email',
@@ -315,7 +315,7 @@ class UserStorage {
     final newComment = UserCommentItem(
       id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
       movieSlug: movieSlug,
-      userName: user != null && user.name.isNotEmpty ? user.name : 'Khán giả 2Phim',
+      userName: user != null && user.name.isNotEmpty ? user.name : 'Khán giả Movix',
       userAvatar: user != null ? user.avatarUrl : '',
       content: content,
       timeText: 'Vừa xong',

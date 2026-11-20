@@ -24,3 +24,9 @@ Thumbs.db
 # Node & Legacy Web
 node_modules/
 web/
+
+# Design & Assets Mockups
+app/Movix - Movie Streaming App UI Kit (Community) (Copy)/
+*.png.bak
+*.jpg.bak
+.idea/

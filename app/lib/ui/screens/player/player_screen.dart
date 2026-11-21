@@ -71,13 +71,22 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   Timer? _tickerTimer;
   Timer? _progressSaveTimer;
   final UserStorage _userStorage = UserStorage();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _currentEpisode = widget.episode;
+    _currentPosition = widget.initialPositionSeconds.toDouble();
     _webPlayerId = 'movix_player_${_currentEpisode.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
     _startPlaying();
+
+    // Auto calculate initial episode chunk for the drawer
+    const chunkSize = 20;
+    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+    if (curIdx >= 0) {
+      _drawerChunkIndex = curIdx ~/ chunkSize;
+    }
 
     // Sync position every 300ms
     _tickerTimer = Timer.periodic(const Duration(milliseconds: 300), (_) => _syncPlaybackState());
@@ -334,7 +343,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     if (_isWebMode) {
       webSetVideoFit(_webPlayerId, _isZoomFit ? 'cover' : 'contain');
     }
-    _showHudToast(_isZoomFit ? 'Tỷ lệ: Cắt tràn viền' : 'Tỷ lệ: 16:9 Chuẩn');
+    _showHudToast(_isZoomFit ? 'Tỷ lệ: Cắt tràn viền (Zoom)' : 'Tỷ lệ: 16:9 Chuẩn');
   }
 
   void _cycleQuality() {
@@ -343,7 +352,31 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     setState(() {
       _selectedQuality = qualities[nextIdx];
     });
+    if (_isWebMode) {
+      int targetHeight = -1;
+      if (_selectedQuality.startsWith('1080')) {
+        targetHeight = 1080;
+      } else if (_selectedQuality.startsWith('720')) {
+        targetHeight = 720;
+      } else if (_selectedQuality.startsWith('480')) {
+        targetHeight = 480;
+      }
+      webSetQuality(_webPlayerId, targetHeight);
+    }
     _showHudToast('Chất lượng: $_selectedQuality');
+  }
+
+  void _toggleEpisodeDrawer() {
+    if (!_showEpisodeDrawer) {
+      const chunkSize = 20;
+      final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+      if (curIdx >= 0) {
+        _drawerChunkIndex = curIdx ~/ chunkSize;
+      }
+    }
+    setState(() {
+      _showEpisodeDrawer = !_showEpisodeDrawer;
+    });
   }
 
   void _skipIntro() {
@@ -665,6 +698,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     _leftRippleTimer?.cancel();
     _rightRippleTimer?.cancel();
     _nativeController?.dispose();
+    _focusNode.dispose();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -688,7 +722,9 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       child: Container(
         color: Colors.black,
         child: AspectRatio(
-          aspectRatio: 16 / 9,
+          aspectRatio: _isZoomFit
+              ? (width / (MediaQuery.of(context).size.height > 0 ? MediaQuery.of(context).size.height : 1.0))
+              : 16 / 9,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -698,6 +734,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                     ? buildHlsVideoView(
                         videoElementId: _webPlayerId,
                         m3u8Url: _currentEpisode.linkM3u8,
+                        startPosition: widget.initialPositionSeconds.toDouble(),
                       )
                     : (_nativeController != null && _nativeController!.value.isInitialized
                         ? FittedBox(
@@ -925,8 +962,31 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
           )
         : const SizedBox.shrink();
 
-    // Single Unified Scaffold: Immersive Fullscreen on Tablet/TV Landscape, and Clean Layout on Portrait
-    return Scaffold(
+    // Single Unified Scaffold with Keyboard Listener for shortcuts:
+    // N: Next episode, P: Prev episode, Space: Play/Pause, ArrowLeft/Right: Seek 10s, F: Fullscreen, M: Mute
+    return KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (KeyEvent event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.keyN) {
+            _playNextEpisode();
+          } else if (event.logicalKey == LogicalKeyboardKey.keyP) {
+            _playPrevEpisode();
+          } else if (event.logicalKey == LogicalKeyboardKey.space) {
+            _togglePlayPause();
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _seekRelative(10);
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _seekRelative(-10);
+          } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
+            _toggleFullScreen();
+          } else if (event.logicalKey == LogicalKeyboardKey.keyM) {
+            _toggleMute();
+          }
+        }
+      },
+      child: Scaffold(
       key: const ValueKey('unified_player_scaffold'),
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -975,7 +1035,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ],
               ),
       ),
-    );
+    ),
+  );
   }
 
   // Slide-in Episode Drawer on demand for TV / Tablet Landscape
@@ -986,6 +1047,9 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     final startIndex = currentChunk * chunkSize;
     final endIndex = (startIndex + chunkSize).clamp(0, widget.allEpisodes.length);
     final displayedEpisodes = widget.allEpisodes.sublist(startIndex, endIndex);
+
+    final curEpIdx = displayedEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final initialOffset = (curEpIdx > 3) ? (curEpIdx - 2) * 52.0 : 0.0;
 
     return Stack(
       children: [
@@ -1088,6 +1152,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                   // Episodes list
                   Expanded(
                     child: ListView.separated(
+                      controller: ScrollController(initialScrollOffset: initialOffset),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       physics: const BouncingScrollPhysics(),
                       itemCount: displayedEpisodes.length,
@@ -1166,6 +1231,11 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   // Mobile Controls Overlay: Clean Stack with Zero Collision & Netflix Vignettes
   Widget _buildMobileControlsOverlay() {
+    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final hasPrev = curIdx > 0;
+    final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
+    final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -1312,6 +1382,23 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Prev Episode Shortcut (Center Controls)
+                  if (hasPrev) ...[
+                    InkWell(
+                      onTap: _playPrevEpisode,
+                      borderRadius: BorderRadius.circular(30),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 28),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                  ],
+
                   // Rewind 10s
                   InkWell(
                     onTap: _onDoubleTapLeft,
@@ -1325,7 +1412,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       child: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 36),
                     ),
                   ),
-                  const SizedBox(width: 32),
+                  const SizedBox(width: 28),
 
                   // Center Play/Pause 62px glass circular button
                   InkWell(
@@ -1353,7 +1440,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       ),
                     ),
                   ),
-                  const SizedBox(width: 32),
+                  const SizedBox(width: 28),
 
                   // Forward 10s
                   InkWell(
@@ -1368,6 +1455,23 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       child: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 36),
                     ),
                   ),
+
+                  // Next Episode Shortcut (Center Controls)
+                  if (hasNext) ...[
+                    const SizedBox(width: 20),
+                    InkWell(
+                      onTap: _playNextEpisode,
+                      borderRadius: BorderRadius.circular(30),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 28),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             )
@@ -1502,14 +1606,23 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                           ),
                           const SizedBox(width: 4),
 
+                          // Next Episode Quick Button (Bottom Bar Shortcut)
+                          if (hasNext) ...[
+                            IconButton(
+                              iconSize: 22,
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                              tooltip: 'Tập tiếp: ${nextEp!.name} (Phím N)',
+                              onPressed: _playNextEpisode,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+
                           // Series Episodes Drawer Toggle Button (Only for multi-episode series)
                           if (widget.allEpisodes.length > 1) ...[
                             InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _showEpisodeDrawer = !_showEpisodeDrawer;
-                                });
-                              },
+                              onTap: _toggleEpisodeDrawer,
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

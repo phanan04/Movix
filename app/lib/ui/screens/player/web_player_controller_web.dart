@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
 @JS('MovixPlayer.createPlayer')
-external void _createPlayer(JSString id, JSString src, JSBoolean autoplay);
+external void _createPlayer(JSString id, JSString src, JSBoolean autoplay, JSNumber startPosition);
+
+@JS('MovixPlayer.setQuality')
+external void _setQuality(JSString id, JSNumber height);
 
 @JS('MovixPlayer.play')
 external void _play(JSString id);
@@ -54,7 +57,11 @@ external JSBoolean _toggleMute(JSString id);
 
 final Set<String> _registeredPlayerViews = <String>{};
 
-Widget buildHlsVideoView({required String videoElementId, required String m3u8Url}) {
+Widget buildHlsVideoView({
+  required String videoElementId,
+  required String m3u8Url,
+  double startPosition = 0,
+}) {
   if (!_registeredPlayerViews.contains(videoElementId)) {
     ui_web.platformViewRegistry.registerViewFactory(
       videoElementId,
@@ -72,7 +79,7 @@ Widget buildHlsVideoView({required String videoElementId, required String m3u8Ur
         // Allow DOM to insert before attaching Hls.js
         web.window.setTimeout(
           (() {
-            _createPlayer(videoElementId.toJS, m3u8Url.toJS, true.toJS);
+            _createPlayer(videoElementId.toJS, m3u8Url.toJS, true.toJS, startPosition.toJS);
           }).toJS,
           50.toJS,
         );
@@ -84,6 +91,14 @@ Widget buildHlsVideoView({required String videoElementId, required String m3u8Ur
   }
 
   return HtmlElementView(viewType: videoElementId);
+}
+
+void webSetQuality(String id, int height) {
+  try {
+    _setQuality(id.toJS, height.toJS);
+  } catch (e) {
+    debugPrint('webSetQuality error: $e');
+  }
 }
 
 void webPlay(String id) {

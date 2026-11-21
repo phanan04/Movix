@@ -24,8 +24,13 @@ class _HeroBannerState extends State<HeroBanner> {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
-    // Khóa chiều cao Hero Banner ở mức 54% màn hình ngang (chuẩn Netflix TV), 48% trên mobile
-    final bannerHeight = isWide ? screenHeight * 0.54 : screenHeight * 0.48;
+    final isShortLandscape = isWide && screenHeight < 500;
+
+    // Chiều cao Hero Banner: Tự co giãn thông minh theo màn hình
+    // Trên điện thoại xoay ngang (iPhone 16 landscape ~852x393), ưu tiên chiều cao 320-360px để không cấn chữ
+    final bannerHeight = isShortLandscape
+        ? (screenHeight * 0.88).clamp(320.0, 380.0)
+        : (isWide ? (screenHeight * 0.56).clamp(420.0, 600.0) : screenHeight * 0.48);
 
     if (movie == null) {
       return Container(
@@ -91,9 +96,9 @@ class _HeroBannerState extends State<HeroBanner> {
 
             // 5. Bottom Content (Title, Metadata, Netflix Action Buttons)
             Positioned(
-              left: isWide ? 48 : 16,
-              right: isWide ? screenWidth * 0.45 : 16,
-              bottom: 24,
+              left: isWide ? (isShortLandscape ? 24 : 48) : 16,
+              right: isWide ? screenWidth * 0.40 : 16,
+              bottom: isShortLandscape ? 12 : 24,
               child: Column(
                 crossAxisAlignment: isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
@@ -105,7 +110,7 @@ class _HeroBannerState extends State<HeroBanner> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: isWide ? 32 : 24,
+                      fontSize: isShortLandscape ? 22 : (isWide ? 32 : 24),
                       fontWeight: FontWeight.w900,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
@@ -116,7 +121,7 @@ class _HeroBannerState extends State<HeroBanner> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: isShortLandscape ? 4 : 8),
 
                   // Metadata: Year • Quality • Categories
                   Wrap(
@@ -167,12 +172,12 @@ class _HeroBannerState extends State<HeroBanner> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: isShortLandscape ? 10 : 16),
 
                   // Cụm nút hành động chuẩn Netflix: [▶ Xem ngay (Nền trắng)] + [ℹ Chi tiết] + [Lưu lại]
                   Wrap(
-                    spacing: 12,
-                    runSpacing: 10,
+                    spacing: isShortLandscape ? 8 : 12,
+                    runSpacing: 8,
                     alignment: isWide ? WrapAlignment.start : WrapAlignment.center,
                     children: [
                       // Nút "Xem ngay" (Play) chuẩn Netflix TV: Nền trắng chữ đen
@@ -187,7 +192,10 @@ class _HeroBannerState extends State<HeroBanner> {
                         },
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isShortLandscape ? 14 : 22,
+                            vertical: isShortLandscape ? 6 : 10,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(6),
@@ -199,15 +207,15 @@ class _HeroBannerState extends State<HeroBanner> {
                               ),
                             ],
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.play_arrow_rounded, color: Colors.black, size: 22),
-                              SizedBox(width: 6),
+                              Icon(Icons.play_arrow_rounded, color: Colors.black, size: isShortLandscape ? 18 : 22),
+                              const SizedBox(width: 4),
                               Text(
                                 'Xem ngay',
                                 style: TextStyle(
-                                  fontSize: 14.5,
+                                  fontSize: isShortLandscape ? 12.5 : 14.5,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.black,
                                 ),
@@ -229,21 +237,24 @@ class _HeroBannerState extends State<HeroBanner> {
                         },
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isShortLandscape ? 12 : 18,
+                            vertical: isShortLandscape ? 6 : 10,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF1E2028).withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: Colors.white24, width: 1),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.info_outline_rounded, color: Colors.white, size: 18),
-                              SizedBox(width: 6),
+                              Icon(Icons.info_outline_rounded, color: Colors.white, size: isShortLandscape ? 16 : 18),
+                              const SizedBox(width: 4),
                               Text(
                                 'Chi tiết',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: isShortLandscape ? 12.5 : 14,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                 ),

@@ -87,6 +87,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     // Check watch progress to resume
     final progress = _userStorage.getProgress(movie.slug);
 
+    // Tự động nhảy sang trang tab khoảng tập tương ứng của tập đang xem dở
+    if (_selectedChunkIndex == 0 && progress != null && progress.episodeSlug.isNotEmpty && episodes.isNotEmpty) {
+      final epIdx = episodes.indexWhere((e) => e.slug == progress.episodeSlug);
+      if (epIdx >= 0) {
+        _selectedChunkIndex = epIdx ~/ 20;
+      }
+    }
+
     final isTabletLandscape = MediaQuery.of(context).size.width >= 600;
     if (isTabletLandscape) {
       return _buildTabletLandscapeContent(movie, movieItem, episodes, progress);
@@ -313,14 +321,18 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                               initialPositionSeconds: progress?.positionSeconds ?? 0,
                             ),
                           ),
-                        );
+                        ).then((_) {
+                          if (mounted) setState(() {});
+                        });
                       }
                     },
                     icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
                     label: Text(
-                      progress != null && progress.positionSeconds > 10
-                          ? 'Tiếp tục xem: ${progress.episodeName}'
-                          : 'Xem Phim Ngay',
+                      progress != null
+                          ? (progress.positionSeconds > 10
+                              ? 'Tiếp tục xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
+                              : 'Xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}')
+                          : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim Ngay'),
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -730,9 +742,11 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     // Cắt bỏ phần tên phụ sau dấu / ở tiêu đề chính
     final mainTitle = movie.name.split('/').first.trim();
 
-    // Nhãn nút phát
-    final playLabel = progress != null && progress.positionSeconds > 10
-        ? 'Tiếp tục ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
+    // Nhãn nút phát chuẩn xác: luôn hiển thị đúng tập đang xem dở
+    final playLabel = progress != null && resumeEp != null
+        ? (progress.positionSeconds > 10
+            ? 'Tiếp tục ${resumeEp.name}'
+            : 'Xem ${resumeEp.name}')
         : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim');
 
     final overviewLeft = LayoutBuilder(
@@ -971,7 +985,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                               initialPositionSeconds: progress?.positionSeconds ?? 0,
                             ),
                           ),
-                        );
+                        ).then((_) {
+                          if (mounted) setState(() {});
+                        });
                       }
                     },
                   ),

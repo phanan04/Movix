@@ -375,6 +375,30 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     });
   }
 
+  void _toggleFallbackMode() {
+    setState(() {
+      _useIframeFallback = !_useIframeFallback;
+      if (!_useIframeFallback) {
+        // Generate a new player element ID so that Flutter Web creates a fresh <video> element
+        _webPlayerId = 'movix_player_${_currentEpisode.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
+        _currentPosition = 0;
+        _totalDuration = 0;
+        _showControls = true;
+      }
+    });
+
+    if (!_useIframeFallback) {
+      // Allow the new DOM element to be inserted before starting playback
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && !_useIframeFallback) {
+          _startPlaying();
+        }
+      });
+    }
+
+    _showHudToast(_useIframeFallback ? 'Đã đổi sang Embed Dự Phòng' : 'Đã đổi sang Player HLS Nhanh');
+  }
+
   void _switchEpisode(EpisodeItem nextEp) {
     _saveProgress();
     setState(() {
@@ -770,7 +794,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 3. YouTube Ripple Left
-              if (_showLeftSeekRipple)
+              if (_showLeftSeekRipple && !_useIframeFallback)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -795,7 +819,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 4. YouTube Ripple Right
-              if (_showRightSeekRipple)
+              if (_showRightSeekRipple && !_useIframeFallback)
                 Positioned(
                   right: 0,
                   top: 0,
@@ -820,7 +844,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 5. YouTube 2X Speed Indicator
-              if (_isLongPressing2X)
+              if (_isLongPressing2X && !_useIframeFallback)
                 Positioned(
                   top: 16,
                   left: 0,
@@ -874,7 +898,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 7. Netflix-Style: Next Episode Floating Prompt
-              if (showNextEpPrompt && !_isLocked && nextEp != null)
+              if (showNextEpPrompt && !_isLocked && nextEp != null && !_useIframeFallback)
                 Positioned(
                   bottom: _showControls ? 64 : 16,
                   right: 14,
@@ -891,8 +915,10 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                   ),
                 ),
 
-              // 8. Mobile Controls Overlay (Clean Stack with Zero Collision)
-              if (_showControls && !_isLongPressing2X)
+              // 8. Mobile Controls Overlay: Dedicated Clean Fallback Overlay OR Netflix Controls Overlay
+              if (_useIframeFallback)
+                _buildFallbackEmbedOverlay()
+              else if (_showControls && !_isLongPressing2X)
                 _buildMobileControlsOverlay(),
             ],
           ),
@@ -929,15 +955,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
                 Flexible(
                   child: TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _useIframeFallback = !_useIframeFallback;
-                        if (!_useIframeFallback) {
-                          _startPlaying();
-                        }
-                      });
-                      _showHudToast(_useIframeFallback ? 'Đã đổi Embed Dự Phòng' : 'Đã đổi Player Tối Ưu Mobile');
-                    },
+                    onPressed: _toggleFallbackMode,
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       visualDensity: VisualDensity.compact,
@@ -1333,15 +1351,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
                     // Quick Switch Player Source (HLS Nhanh vs Dự Phòng)
                     InkWell(
-                      onTap: () {
-                        setState(() {
-                          _useIframeFallback = !_useIframeFallback;
-                          if (!_useIframeFallback) {
-                            _startPlaying();
-                          }
-                        });
-                        _showHudToast(_useIframeFallback ? 'Đã đổi Embed Dự Phòng' : 'Đã đổi Player HLS Nhanh');
-                      },
+                      onTap: _toggleFallbackMode,
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1709,6 +1719,173 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
             ),
         ],
       ),
+    );
+  }
+
+  // Fallback (Embed) Controls Overlay:
+  // Shows ONLY a non-intrusive floating top header bar with Back, Title, and "Đổi về HLS Nhanh".
+  // The center and bottom areas remain 100% transparent and unobstructed so that the user
+  // interacts directly with the embed player's own native controls without any duplicate UI.
+  Widget _buildFallbackEmbedOverlay() {
+    return Stack(
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xE6000000),
+                  Color(0x99000000),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Row(
+                  children: [
+                    // Back Button
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Movie Title & Episode Information
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.movie.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.bold,
+                              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.amber, width: 0.8),
+                                ),
+                                child: const Text(
+                                  'Embed Dự Phòng',
+                                  style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              if (widget.allEpisodes.length > 1 || _currentEpisode.name.isNotEmpty)
+                                Text(
+                                  _currentEpisode.name.toLowerCase().startsWith('tập')
+                                      ? _currentEpisode.name
+                                      : 'Tập ${_currentEpisode.name}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Series Episode Drawer Button (if multi-episode series)
+                    if (widget.allEpisodes.length > 1) ...[
+                      InkWell(
+                        onTap: () => setState(() => _showEpisodeDrawer = !_showEpisodeDrawer),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _showEpisodeDrawer
+                                ? const Color(0xFFE50914)
+                                : Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white24, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.video_library_rounded, size: 14, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Tập (${widget.allEpisodes.length})',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+
+                    // Switch back to HLS Button - ALWAYS VISIBLE & RELIABLE
+                    InkWell(
+                      onTap: _toggleFallbackMode,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE50914),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFE50914).withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.flash_on_rounded, size: 16, color: Colors.amberAccent),
+                            SizedBox(width: 5),
+                            Text(
+                              'Đổi về HLS Nhanh',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

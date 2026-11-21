@@ -9,7 +9,8 @@ import '../../widgets/shimmer_loading.dart';
 import 'widgets/sort_filter_bottom_sheet.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
-  const ExploreScreen({super.key});
+  final FocusNode? focusNode;
+  const ExploreScreen({super.key, this.focusNode});
 
   @override
   ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
@@ -18,11 +19,32 @@ class ExploreScreen extends ConsumerStatefulWidget {
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExploreScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      if (oldWidget.focusNode == null) {
+        _focusNode.dispose();
+      }
+      _focusNode = widget.focusNode ?? FocusNode();
+    }
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     _debounceTimer?.cancel();
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 
@@ -122,6 +144,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           Expanded(
                             child: TextField(
                               controller: _searchController,
+                              focusNode: _focusNode,
                               onChanged: _onSearchChanged,
                               style: const TextStyle(color: Colors.white, fontSize: 14),
                               decoration: const InputDecoration(

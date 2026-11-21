@@ -17,7 +17,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.of(context).size.width;
-    final isTabletLandscape = width >= 720;
+    final isTabletLandscape = width >= 600;
 
     final newUpdatesAsync = ref.watch(newUpdatesProvider);
     final topTenAsync = ref.watch(topTenMoviesProvider);

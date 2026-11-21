@@ -16,20 +16,39 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  final FocusNode _searchFocusNode = FocusNode();
 
-  void _switchTab(int index) {
+  @override
+  void dispose() {
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _switchTab(int index, {bool requestFocus = false}) {
     setState(() {
       _currentIndex = index;
     });
+    if (index == 1 && requestFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_searchFocusNode.hasFocus) {
+          _searchFocusNode.requestFocus();
+        }
+      });
+    }
   }
 
-  Widget _buildSidebarItem(int index, IconData icon, String label) {
+  Widget _buildSidebarItem(
+    int index,
+    IconData icon,
+    String label, {
+    bool requestFocus = false,
+  }) {
     final isSelected = _currentIndex == index;
     return Tooltip(
       message: label,
       preferBelow: false,
       child: InkWell(
-        onTap: () => _switchTab(index),
+        onTap: () => _switchTab(index, requestFocus: requestFocus),
         child: SizedBox(
           width: double.infinity,
           height: 42,
@@ -137,13 +156,14 @@ class _MainScreenState extends State<MainScreen> {
 
             const Spacer(),
 
-            // 2. CENTER: Cụm điều hướng chính căn giữa theo chiều dọc
-            // (Home, Explore, Bookmark, Download) với khoảng cách dọc đều nhau 24px
+            // 2. CENTER: Cụm điều hướng chính căn giữa theo chiều dọc (khoảng cách 24px)
+            // gồm 4 icon cố định ở mọi màn hình: Tìm kiếm (Kính lúp), Trang chủ (Home), Danh sách của tôi (Bookmark), Tải xuống (Download)
+            // (bỏ icon La bàn trên Sidebar để tránh trùng lặp)
+            _buildSidebarItem(1, Icons.search, 'Tìm kiếm', requestFocus: true),
+            const SizedBox(height: 24),
             _buildSidebarItem(0, Icons.home_outlined, 'Trang chủ'),
             const SizedBox(height: 24),
-            _buildSidebarItem(1, Icons.explore_outlined, 'Khám phá'),
-            const SizedBox(height: 24),
-            _buildSidebarItem(2, Icons.bookmark_border_rounded, 'Đã lưu'),
+            _buildSidebarItem(2, Icons.bookmark_border_rounded, 'Danh sách của tôi'),
             const SizedBox(height: 24),
             _buildSidebarItem(3, Icons.file_download_outlined, 'Tải xuống'),
 
@@ -172,13 +192,13 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final isTabletLandscape = width >= 720;
+    final isTabletLandscape = width >= 600;
 
     final pages = [
-      HomeScreen(onSearchTap: () => _switchTab(1)),
-      const ExploreScreen(),
+      HomeScreen(onSearchTap: () => _switchTab(1, requestFocus: true)),
+      ExploreScreen(focusNode: _searchFocusNode),
       const MyListScreen(),
-      DownloadScreen(onExploreTap: () => _switchTab(1)),
+      DownloadScreen(onExploreTap: () => _switchTab(1, requestFocus: false)),
       const ProfileScreen(),
     ];
 
@@ -210,33 +230,41 @@ class _MainScreenState extends State<MainScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
-          color: AppColors.background,
+          color: Color(0xFF0F1014),
           border: Border(
-            top: BorderSide(color: AppColors.border, width: 0.5),
+            top: BorderSide(color: Color(0xFF1F222A), width: 0.5),
           ),
         ),
         child: BottomNavigationBar(
+          backgroundColor: const Color(0xFF0F1014),
           currentIndex: _currentIndex,
-          onTap: _switchTab,
+          onTap: (index) => _switchTab(index, requestFocus: false),
+          selectedItemColor: AppColors.primary,
+          unselectedItemColor: AppColors.textMuted,
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled),
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home_filled),
               label: 'Trang chủ',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.explore_rounded),
+              icon: Icon(Icons.explore_outlined),
+              activeIcon: Icon(Icons.explore_rounded),
               label: 'Khám phá',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.bookmark_rounded),
+              icon: Icon(Icons.bookmark_border_rounded),
+              activeIcon: Icon(Icons.bookmark_rounded),
               label: 'Danh sách',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.file_download_outlined),
+              activeIcon: Icon(Icons.file_download_rounded),
               label: 'Tải xuống',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded),
+              icon: Icon(Icons.person_outline_rounded),
+              activeIcon: Icon(Icons.person_rounded),
               label: 'Cá nhân',
             ),
           ],

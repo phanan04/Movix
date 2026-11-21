@@ -7,6 +7,7 @@ import '../../../providers/movie_providers.dart';
 import '../../widgets/cached_poster_image.dart';
 import '../../widgets/episode_grid_widget.dart';
 import '../../widgets/rating_badge.dart';
+import '../../widgets/app_toast.dart';
 import '../player/player_screen.dart';
 import 'widgets/movie_comments_widget.dart';
 
@@ -138,9 +139,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                 child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
               ),
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Đã sao chép liên kết phim')),
-                );
+                AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded);
               },
             ),
             const SizedBox(width: 8),
@@ -477,9 +476,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
           IconButton(
             icon: const Icon(Icons.share_outlined, color: Colors.white),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã sao chép liên kết phim')),
-              );
+              AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded);
             },
           ),
           const SizedBox(width: 12),

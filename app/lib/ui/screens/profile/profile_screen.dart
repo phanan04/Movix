@@ -12,6 +12,7 @@ import '../settings/security_screen.dart';
 import '../settings/language_screen.dart';
 import '../settings/help_center_screen.dart';
 import '../settings/privacy_policy_screen.dart';
+import '../../widgets/app_toast.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -203,9 +204,7 @@ class ProfileScreen extends StatelessWidget {
             subtitle: 'Giải phóng RAM và bộ nhớ máy',
             onTap: () {
               CacheManager().clear();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã xóa sạch bộ nhớ đệm cache')),
-              );
+              AppToast.show(context, 'Đã dọn dẹp sạch bộ nhớ đệm cache', icon: Icons.cleaning_services_rounded);
             },
           ),
           _buildSettingsTile(

@@ -104,9 +104,6 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
       'region': _selectedRegion,
       'year': _selectedYear,
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã áp dụng bộ lọc phim')),
-    );
   }
 
   @override

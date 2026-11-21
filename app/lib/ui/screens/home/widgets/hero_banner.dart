@@ -24,8 +24,8 @@ class _HeroBannerState extends State<HeroBanner> {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
-    // Khóa chiều cao Hero Banner ở mức 45%–50% chiều cao màn hình (0.48)
-    final bannerHeight = screenHeight * 0.48;
+    // Khóa chiều cao Hero Banner ở mức 54% màn hình ngang (chuẩn Netflix TV), 48% trên mobile
+    final bannerHeight = isWide ? screenHeight * 0.54 : screenHeight * 0.48;
 
     if (movie == null) {
       return Container(
@@ -40,40 +40,60 @@ class _HeroBannerState extends State<HeroBanner> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Background Image
+            // 1. Background Image: Dùng ảnh ngang (thumbUrl) cho màn hình rộng/TV, poster dọc cho mobile
             CachedPosterImage(
-              imageUrl: movie.fullPosterUrl,
+              imageUrl: (isWide && movie.fullThumbUrl.isNotEmpty)
+                  ? movie.fullThumbUrl
+                  : movie.fullPosterUrl,
               fit: BoxFit.cover,
-              memCacheWidth: 720,
-              memCacheHeight: 960,
+              memCacheWidth: 1280,
+              memCacheHeight: 720,
             ),
 
-            // Top gradient for status bar and top icons
+            // 2. Lớp gradient ngang (LinearGradient từ trái sang) trên màn hình rộng chuẩn Netflix
+            if (isWide)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      const Color(0xFF0F1014).withValues(alpha: 0.96),
+                      const Color(0xFF0F1014).withValues(alpha: 0.75),
+                      const Color(0xFF0F1014).withValues(alpha: 0.25),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.35, 0.60, 0.90],
+                  ),
+                ),
+              ),
+
+            // 3. Top gradient for status bar and top icons
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.center,
                   colors: [
-                    Color(0xCC181A20),
+                    Color(0x990F1014),
                     Colors.transparent,
                   ],
                 ),
               ),
             ),
 
-            // Bottom gradient overlay
+            // 4. Bottom gradient overlay (fade into #0F1014)
             Container(
               decoration: const BoxDecoration(
                 gradient: AppColors.heroGradient,
               ),
             ),
 
-            // Bottom Content
+            // 5. Bottom Content (Title, Metadata, Netflix Action Buttons)
             Positioned(
-              left: isWide ? 40 : 16,
-              right: isWide ? 40 : 16,
-              bottom: 20,
+              left: isWide ? 48 : 16,
+              right: isWide ? screenWidth * 0.45 : 16,
+              bottom: 24,
               child: Column(
                 crossAxisAlignment: isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
@@ -85,38 +105,77 @@ class _HeroBannerState extends State<HeroBanner> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: isWide ? 28 : 24,
-                      fontWeight: FontWeight.bold,
+                      fontSize: isWide ? 32 : 24,
+                      fontWeight: FontWeight.w900,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
+                      height: 1.15,
                       shadows: const [
-                        Shadow(color: Colors.black, blurRadius: 10),
+                        Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
+                        Shadow(color: Colors.black87, blurRadius: 16),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
 
-                  // Categories & Subtitles
-                  Text(
-                    movie.categoryNames.isNotEmpty
-                        ? movie.categoryNames.take(3).join(' • ')
-                        : '${movie.originName} • ${movie.year}',
-                    textAlign: isWide ? TextAlign.left : TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Action Buttons: Xem ngay & + Danh sách (TVFocusable)
-                  Row(
-                    mainAxisAlignment: isWide ? MainAxisAlignment.start : MainAxisAlignment.center,
+                  // Metadata: Year • Quality • Categories
+                  Wrap(
+                    spacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    alignment: isWide ? WrapAlignment.start : WrapAlignment.center,
                     children: [
-                      // Nút "Xem ngay" (Play)
+                      if (movie.year > 0)
+                        Text(
+                          '${movie.year}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      if (movie.quality.isNotEmpty) ...[
+                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(3),
+                            border: Border.all(color: Colors.white30, width: 0.8),
+                          ),
+                          child: Text(
+                            movie.quality.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (movie.categoryNames.isNotEmpty) ...[
+                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        Text(
+                          movie.categoryNames.take(3).join(', '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB3B3B3),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Cụm nút hành động chuẩn Netflix: [▶ Xem ngay (Nền trắng)] + [ℹ Chi tiết] + [Lưu lại]
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 10,
+                    alignment: isWide ? WrapAlignment.start : WrapAlignment.center,
+                    children: [
+                      // Nút "Xem ngay" (Play) chuẩn Netflix TV: Nền trắng chữ đen
                       TVFocusable(
                         onPressed: () {
                           Navigator.push(
@@ -126,23 +185,66 @@ class _HeroBannerState extends State<HeroBanner> {
                             ),
                           );
                         },
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
                           decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(24),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                              Icon(Icons.play_arrow_rounded, color: Colors.black, size: 22),
                               SizedBox(width: 6),
                               Text(
                                 'Xem ngay',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 14.5,
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Nút "Chi tiết" (Info)
+                      TVFocusable(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MovieDetailScreen(slug: movie.slug),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E2028).withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white24, width: 1),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.info_outline_rounded, color: Colors.white, size: 18),
+                              SizedBox(width: 6),
+                              Text(
+                                'Chi tiết',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                 ),
                               ),
@@ -150,7 +252,6 @@ class _HeroBannerState extends State<HeroBanner> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
 
                       // Nút "+ Danh sách" (My List)
                       ValueListenableBuilder<List<MovieItem>>(
@@ -161,29 +262,32 @@ class _HeroBannerState extends State<HeroBanner> {
                             onPressed: () {
                               _userStorage.toggleMyList(movie);
                             },
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(6),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(color: Colors.white70, width: 1.5),
+                                color: const Color(0xFF1E2028).withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: inList ? const Color(0xFFE50914) : Colors.white24,
+                                  width: 1,
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    inList ? Icons.check : Icons.add,
-                                    color: Colors.white,
+                                    inList ? Icons.check_rounded : Icons.add_rounded,
+                                    color: inList ? const Color(0xFFE50914) : Colors.white,
                                     size: 18,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    inList ? 'Đã thêm' : '+ Danh sách',
-                                    style: const TextStyle(
+                                    inList ? 'Đã lưu' : 'Lưu lại',
+                                    style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                      color: inList ? const Color(0xFFE50914) : Colors.white,
                                     ),
                                   ),
                                 ],

@@ -127,21 +127,36 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildTabletSidebar(BuildContext context) {
     return Container(
-      width: 66,
-      color: const Color(0xFF14161D),
+      width: 68,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0B0C0E),
+        border: Border(
+          right: BorderSide(
+            color: Color(0x14FFFFFF),
+            width: 0.8,
+          ),
+        ),
+      ),
       child: SafeArea(
         right: false,
         child: Column(
           children: [
-            // 1. TOP: Logo chữ 'M' màu đỏ, căn thẳng hàng ngang với thanh Search
+            // 1. TOP: Logo chữ 'M' màu đỏ
             Padding(
-              padding: const EdgeInsets.only(top: 14),
+              padding: const EdgeInsets.only(top: 16),
               child: Container(
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
                   color: const Color(0xFFE50914),
                   borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE50914).withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: const Center(
                   child: Text(
@@ -158,20 +173,18 @@ class _MainScreenState extends State<MainScreen> {
 
             const Spacer(),
 
-            // 2. CENTER: Cụm điều hướng chính căn giữa theo chiều dọc (khoảng cách 24px)
-            // gồm 4 icon cố định ở mọi màn hình: Tìm kiếm (Kính lúp), Trang chủ (Home), Danh sách của tôi (Bookmark), Tải xuống (Download)
-            // (bỏ icon La bàn trên Sidebar để tránh trùng lặp)
-            _buildSidebarItem(1, Icons.search, 'Tìm kiếm', requestFocus: true),
-            const SizedBox(height: 24),
-            _buildSidebarItem(0, Icons.home_outlined, 'Trang chủ'),
-            const SizedBox(height: 24),
-            _buildSidebarItem(2, Icons.bookmark_border_rounded, 'Danh sách của tôi'),
-            const SizedBox(height: 24),
-            _buildSidebarItem(3, Icons.file_download_outlined, 'Tải xuống'),
+            // 2. CENTER: Cụm điều hướng chính căn giữa theo chiều dọc
+            _buildSidebarItem(1, Icons.search_rounded, 'Tìm kiếm', requestFocus: true),
+            const SizedBox(height: 22),
+            _buildSidebarItem(0, Icons.home_rounded, 'Trang chủ'),
+            const SizedBox(height: 22),
+            _buildSidebarItem(2, Icons.bookmark_rounded, 'Danh sách của tôi'),
+            const SizedBox(height: 22),
+            _buildSidebarItem(3, Icons.file_download_rounded, 'Tải xuống'),
 
             const Spacer(),
 
-            // 3. BOTTOM: Icon Thông báo và Tài khoản sát đáy Sidebar với khoảng cách 20px
+            // 3. BOTTOM: Icon Thông báo và Tài khoản
             _buildSidebarActionButton(
               icon: Icons.notifications_none_rounded,
               label: 'Thông báo',
@@ -182,9 +195,9 @@ class _MainScreenState extends State<MainScreen> {
                 );
               },
             ),
-            const SizedBox(height: 20),
-            _buildSidebarItem(4, Icons.person_outline_rounded, 'Tài khoản'),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
+            _buildSidebarItem(4, Icons.person_rounded, 'Tài khoản'),
+            const SizedBox(height: 18),
           ],
         ),
       ),
@@ -211,7 +224,6 @@ class _MainScreenState extends State<MainScreen> {
         body: Row(
           children: [
             _buildTabletSidebar(context),
-            const VerticalDivider(thickness: 1, width: 1, color: AppColors.border),
             Expanded(
               child: IndexedStack(
                 index: _currentIndex,

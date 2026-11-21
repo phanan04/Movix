@@ -483,7 +483,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               ),
             ),
 
-            // 2. Lớp gradient tối dần từ trái sang phải và mờ dần xuống đáy
+            // 2. Lớp nền tối toàn màn hình (chống lóa/sáng kể cả khi ảnh nền màu trắng sáng)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.45),
+              ),
+            ),
+
+            // 3. Lớp LinearGradient đậm từ trái sang phải: 0.92 mép trái, 0.75 ở giữa, 0.25 ở mép phải
             Positioned.fill(
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
@@ -496,12 +503,11 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                           colors: [
-                            Color(0xF20A0B0E), // Đen mờ 95% bên trái
-                            Color(0xD90A0B0E), // Đen mờ 85%
-                            Color(0x660A0B0E), // Trong suốt 40%
-                            Colors.transparent,
+                            Color(0xEB000000), // 0.92 ở mép trái
+                            Color(0xBF000000), // 0.75 ở giữa
+                            Color(0x40000000), // 0.25 ở mép phải
                           ],
-                          stops: [0.0, 0.44, 0.72, 1.0],
+                          stops: [0.0, 0.50, 1.0],
                         )
                       : null,
                 ),
@@ -517,9 +523,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Color(0x800A0B0E),
+                        Color(0x80000000),
                         Colors.transparent,
-                        Color(0xF50A0B0E),
+                        Color(0xF0000000),
                       ],
                       stops: [0.0, 0.35, 1.0],
                     ),
@@ -527,26 +533,81 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                 ),
               ),
 
-            // 3. Nội dung 3 trạng thái chuyển đổi mượt mà
+            // 4. Bố cục không chồng chéo: Gom thanh điều hướng và nội dung vào Column chuẩn
             SafeArea(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: _buildCurrentStateView(movie, movieItem, episodes, progress),
+              child: Column(
+                children: [
+                  // Thanh điều hướng trên cùng chuẩn Row có padding rõ ràng
+                  _buildTopNavBar(context, movie, movieItem),
+
+                  // Nội dung các trạng thái chuyển đổi mượt mà
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      child: _buildCurrentStateView(movie, movieItem, episodes, progress),
+                    ),
+                  ),
+                ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // 4. Nút Quay lại (<) nổi góc trên bên trái (nền tròn kính mờ)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              left: 24,
-              child: TVFocusable(
-                onPressed: () {
-                  if (_viewMode != DetailViewMode.overview) {
-                    setState(() => _viewMode = DetailViewMode.overview);
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
+  /// Thanh điều hướng trên cùng: gom thành 1 Row chuẩn, không bao giờ đè lên chữ
+  Widget _buildTopNavBar(BuildContext context, MovieDetail movie, MovieItem movieItem) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+      child: Row(
+        children: [
+          // Bên trái: Nút tròn ← (thoát trang hoặc quay lại tổng quan)
+          TVFocusable(
+            onPressed: () {
+              if (_viewMode != DetailViewMode.overview) {
+                setState(() => _viewMode = DetailViewMode.overview);
+              } else {
+                Navigator.pop(context);
+              }
+            },
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24, width: 0.8),
+              ),
+              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+
+          // Ở Trạng thái 2 & 3: Thêm khoảng cách 12px và chữ "Quay lại tổng quan"
+          if (_viewMode != DetailViewMode.overview) ...[
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: () => setState(() => _viewMode = DetailViewMode.overview),
+              child: const Text(
+                'Quay lại tổng quan',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+
+          const Spacer(),
+
+          // Bên phải: 2 nút tròn kính mờ Bookmark và Share
+          ValueListenableBuilder<List<MovieItem>>(
+            valueListenable: _userStorage.myListNotifier,
+            builder: (context, _, __) {
+              final inList = _userStorage.isInMyList(movie.slug);
+              return TVFocusable(
+                onPressed: () => _userStorage.toggleMyList(movieItem),
                 borderRadius: BorderRadius.circular(22),
                 child: Container(
                   padding: const EdgeInsets.all(9),
@@ -555,61 +616,32 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white24, width: 0.8),
                   ),
-                  child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                  child: Icon(
+                    inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    color: inList ? AppColors.primary : Colors.white,
+                    size: 22,
+                  ),
                 ),
+              );
+            },
+          ),
+          const SizedBox(width: 12),
+          TVFocusable(
+            onPressed: () {
+              AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded);
+            },
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24, width: 0.8),
               ),
+              child: const Icon(Icons.share_outlined, color: Colors.white, size: 22),
             ),
-
-            // 5. Nút Lưu (Bookmark) và Chia sẻ (Share) góc trên bên phải (nền tròn kính mờ)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              right: 24,
-              child: Row(
-                children: [
-                  ValueListenableBuilder<List<MovieItem>>(
-                    valueListenable: _userStorage.myListNotifier,
-                    builder: (context, _, __) {
-                      final inList = _userStorage.isInMyList(movie.slug);
-                      return TVFocusable(
-                        onPressed: () => _userStorage.toggleMyList(movieItem),
-                        borderRadius: BorderRadius.circular(22),
-                        child: Container(
-                          padding: const EdgeInsets.all(9),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white24, width: 0.8),
-                          ),
-                          child: Icon(
-                            inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                            color: inList ? AppColors.primary : Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  TVFocusable(
-                    onPressed: () {
-                      AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded);
-                    },
-                    borderRadius: BorderRadius.circular(22),
-                    child: Container(
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white24, width: 0.8),
-                      ),
-                      child: const Icon(Icons.share_outlined, color: Colors.white, size: 22),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -642,10 +674,13 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         ? episodes.firstWhere((e) => e.slug == progress.episodeSlug, orElse: () => episodes.first)
         : (episodes.isNotEmpty ? episodes.first : null);
 
+    // Logic phim lẻ vs phim bộ: Nếu chỉ có <= 1 tập và <= 1 server, ẩn mục Danh sách tập
+    final isSingleEpisodeMovie = episodes.length <= 1 && movie.episodes.length <= 1;
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
-        padding: const EdgeInsets.only(left: 36, top: 40, bottom: 20),
+        padding: const EdgeInsets.only(left: 36, top: 4, bottom: 20),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: width * 0.48),
           child: SingleChildScrollView(
@@ -725,9 +760,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                   ),
                 ],
-                const SizedBox(height: 22),
+                const SizedBox(height: 20),
 
-                // Nút chính nổi bật: ▶ Xem Tập 01 hoặc ▶ Tiếp tục Tập XX
+                // Nút chính nổi bật (chuẩn điều hướng TV & Tablet): ▶ Xem Tập 01 hoặc ▶ Tiếp tục Tập XX
                 TVFocusable(
                   onPressed: () {
                     if (episodes.isNotEmpty && resumeEp != null) {
@@ -746,7 +781,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   },
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+                    width: 240,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE50914),
                       borderRadius: BorderRadius.circular(8),
@@ -763,44 +799,42 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       children: [
                         const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
                         const SizedBox(width: 8),
-                        Text(
-                          progress != null && progress.positionSeconds > 10
-                              ? 'Tiếp tục ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
-                              : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim'),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        Expanded(
+                          child: Text(
+                            progress != null && progress.positionSeconds > 10
+                                ? 'Tiếp tục ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
+                                : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Các lựa chọn phụ bên dưới dạng hàng menu tối giản (icon + chữ)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMenuItem(
-                      icon: Icons.video_library_outlined,
-                      label: 'Danh sách tập',
-                      onTap: () => setState(() => _viewMode = DetailViewMode.episodes),
-                    ),
-                    const SizedBox(width: 14),
-                    _buildMenuItem(
-                      icon: Icons.auto_awesome_motion_outlined,
-                      label: 'Phim tương tự',
-                      onTap: () => setState(() => _viewMode = DetailViewMode.similar),
-                    ),
-                    const SizedBox(width: 14),
-                    _buildMenuItem(
-                      icon: Icons.chat_bubble_outline_rounded,
-                      label: 'Bình luận',
-                      onTap: () => _showCommentsModal(context, movie.slug),
-                    ),
-                  ],
+                // Các lựa chọn phụ bên dưới dạng HÀNG DỌC (chuẩn Netflix TV: width: 240, căn trái, không khung viền khi chưa focus)
+                if (!isSingleEpisodeMovie)
+                  _buildMenuItem(
+                    icon: Icons.video_library_outlined,
+                    label: 'Danh sách tập',
+                    onTap: () => setState(() => _viewMode = DetailViewMode.episodes),
+                  ),
+                _buildMenuItem(
+                  icon: Icons.auto_awesome_motion_outlined,
+                  label: 'Phim tương tự',
+                  onTap: () => setState(() => _viewMode = DetailViewMode.similar),
+                ),
+                _buildMenuItem(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  label: 'Bình luận',
+                  onTap: () => _showCommentsModal(context, movie.slug),
                 ),
               ],
             ),
@@ -824,7 +858,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     final displayedEpisodes = episodes.isNotEmpty ? episodes.sublist(startIndex, endIndex) : <EpisodeItem>[];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 40, 36, 24),
+      padding: const EdgeInsets.fromLTRB(36, 10, 36, 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -836,19 +870,6 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TVFocusable(
-                    onPressed: () => setState(() => _viewMode = DetailViewMode.overview),
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                        SizedBox(width: 6),
-                        Text('Quay lại tổng quan', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
                   Text(
                     movie.name,
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
@@ -908,19 +929,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Danh sách tập (${displayedEpisodes.length}/${episodes.length} tập)',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    if (progress != null && progress.episodeSlug.isNotEmpty)
-                      Text(
-                        'Đang xem: ${progress.episodeName}',
-                        style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w500),
-                      ),
-                  ],
+                Text(
+                  'Danh sách tập (${displayedEpisodes.length}/${episodes.length} tập)',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 const SizedBox(height: 14),
                 Expanded(
@@ -1001,33 +1012,15 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     final similarAsync = ref.watch(similarMoviesProvider(firstCatSlug));
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 40, 36, 20),
+      padding: const EdgeInsets.fromLTRB(36, 10, 36, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Nút quay lại + Tiêu đề
-          Row(
-            children: [
-              TVFocusable(
-                onPressed: () => setState(() => _viewMode = DetailViewMode.overview),
-                borderRadius: BorderRadius.circular(8),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 6),
-                    Text('Quay lại tổng quan', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 20),
-              Text(
-                'Phim tương tự: $firstCatName',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
+          Text(
+            'Phim tương tự: $firstCatName',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
           // Lưới 5 cột các thẻ Poster phim
           Expanded(
@@ -1191,35 +1184,38 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     );
   }
 
+  /// Mục menu chuẩn Netflix TV: width: 240px, căn trái icon + chữ, không viền khi chưa focus
   Widget _buildMenuItem({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
   }) {
-    return TVFocusable(
-      onPressed: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white24, width: 0.8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TVFocusable(
+        onPressed: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 240,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white70, size: 20),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -111,13 +111,14 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Categories display slice: 2 rows (~7 items) or all
-    const defaultVisibleCount = 7;
+    // Categories display slice: 2 rows in 3 columns (5 items + 1 Xem thêm = 6 cells) or all
+    const defaultVisibleCount = 5;
     final isSelectedBeyondVisible = !_isCategoryExpanded &&
         _selectedCategory != 'all' &&
         _categories.indexWhere((c) => c['slug'] == _selectedCategory) >= defaultVisibleCount;
 
-    final visibleCategories = (_isCategoryExpanded || isSelectedBeyondVisible)
+    final isExpanded = _isCategoryExpanded || isSelectedBeyondVisible;
+    final visibleCategories = isExpanded
         ? _categories
         : _categories.take(defaultVisibleCount).toList();
 
@@ -201,31 +202,48 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
                 ),
                 const SizedBox(height: 18),
 
-                // 3. Categories (Sắp xếp A-Z, Wrap spacing: 8, runSpacing: 8, mặc định 2 dòng + chip xem thêm)
+                // 3. Categories (Grid 3 cột, sắp xếp A-Z, mặc định 2 hàng + chip Xem thêm)
                 _buildSectionTitle('Thể loại phim'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ...visibleCategories.map((cat) {
-                      final isSel = _selectedCategory == cat['slug'];
-                      return _buildChip(cat['name']!, isSel, () {
-                        setState(() => _selectedCategory = cat['slug']!);
-                      });
-                    }),
-                    // Chip "+ Xem thêm" / "- Thu gọn"
-                    _buildChip(
-                      _isCategoryExpanded ? 'Thu gọn' : '+ Xem thêm',
-                      false,
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisExtent: 34,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemCount: visibleCategories.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == visibleCategories.length) {
+                      // Nút "+ Xem thêm" / "Thu gọn"
+                      return _buildChip(
+                        isExpanded ? 'Thu gọn' : '+ Xem thêm',
+                        false,
+                        () {
+                          setState(() {
+                            _isCategoryExpanded = !isExpanded;
+                          });
+                        },
+                        isAction: true,
+                        inGrid: true,
+                        icon: isExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                      );
+                    }
+
+                    final cat = visibleCategories[index];
+                    final isSel = _selectedCategory == cat['slug'];
+                    return _buildChip(
+                      cat['name']!,
+                      isSel,
                       () {
-                        setState(() {
-                          _isCategoryExpanded = !_isCategoryExpanded;
-                        });
+                        setState(() => _selectedCategory = cat['slug']!);
                       },
-                      isAction: true,
-                      icon: _isCategoryExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                    ),
-                  ],
+                      inGrid: true,
+                    );
+                  },
                 ),
                 const SizedBox(height: 18),
 
@@ -309,20 +327,35 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
     );
   }
 
-  /// Đồng bộ chiều cao tất cả các chip là 34px, padding ngang 14px, bo góc 20px
+  /// Đồng bộ chiều cao tất cả các chip là 34px, padding ngang 14px (hoặc 8px khi trong grid), bo góc 20px
   Widget _buildChip(
     String label,
     bool isSelected,
     VoidCallback onTap, {
     bool isAction = false,
     IconData? icon,
+    bool inGrid = false,
   }) {
+    final textWidget = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: isAction
+            ? AppColors.primary
+            : (isSelected ? Colors.white : AppColors.textSecondary),
+        fontSize: 12,
+        fontWeight: isSelected || isAction ? FontWeight.bold : FontWeight.w500,
+      ),
+    );
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: EdgeInsets.symmetric(horizontal: inGrid ? 8 : 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isAction
@@ -337,18 +370,13 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: inGrid ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: isAction
-                    ? AppColors.primary
-                    : (isSelected ? Colors.white : AppColors.textSecondary),
-                fontSize: 12,
-                fontWeight: isSelected || isAction ? FontWeight.bold : FontWeight.w500,
-              ),
-            ),
+            if (inGrid)
+              Flexible(child: textWidget)
+            else
+              textWidget,
             if (icon != null) ...[
               const SizedBox(width: 4),
               Icon(

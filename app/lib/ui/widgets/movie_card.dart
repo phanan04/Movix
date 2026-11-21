@@ -3,6 +3,7 @@ import '../../core/models/movie_model.dart';
 import '../../core/theme/app_colors.dart';
 import 'cached_poster_image.dart';
 import 'rating_badge.dart';
+import 'tv_focusable.dart';
 import '../screens/movie_detail/movie_detail_screen.dart';
 
 class MovieCard extends StatelessWidget {
@@ -22,8 +23,8 @@ class MovieCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: GestureDetector(
-        onTap: () {
+      child: TVFocusable(
+        onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -31,6 +32,7 @@ class MovieCard extends StatelessWidget {
             ),
           );
         },
+        borderRadius: BorderRadius.circular(14),
         child: SizedBox(
           width: width,
           child: Column(

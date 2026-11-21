@@ -6,6 +6,7 @@ import 'my_list/my_list_screen.dart';
 import 'download/download_screen.dart';
 import 'profile/profile_screen.dart';
 import 'home/notification_screen.dart';
+import '../widgets/tv_focusable.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -47,34 +48,35 @@ class _MainScreenState extends State<MainScreen> {
     return Tooltip(
       message: label,
       preferBelow: false,
-      child: InkWell(
-        onTap: () => _switchTab(index, requestFocus: requestFocus),
-        child: SizedBox(
-          width: double.infinity,
-          height: 42,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Vạch indicator nhỏ màu đỏ #E50914 sát mép trái khi Active
-              if (isSelected)
-                Positioned(
-                  left: 0,
-                  top: 7,
-                  bottom: 7,
-                  child: Container(
-                    width: 3.5,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE50914),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(3),
-                        bottomRight: Radius.circular(3),
-                      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 42,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Vạch indicator nhỏ màu đỏ #E50914 sát mép trái khi Active
+            if (isSelected)
+              Positioned(
+                left: 0,
+                top: 7,
+                bottom: 7,
+                child: Container(
+                  width: 3.5,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE50914),
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(3),
+                      bottomRight: Radius.circular(3),
                     ),
                   ),
                 ),
+              ),
 
-              // Nền bo góc vuông BorderRadius.circular(10) màu xám/đỏ mờ + icon trắng sáng khi Active
-              Container(
+            // Nền bo góc vuông BorderRadius.circular(10) với TVFocusable
+            TVFocusable(
+              onPressed: () => _switchTab(index, requestFocus: requestFocus),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
@@ -91,8 +93,8 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -106,8 +108,8 @@ class _MainScreenState extends State<MainScreen> {
     return Tooltip(
       message: label,
       preferBelow: false,
-      child: InkWell(
-        onTap: onTap,
+      child: TVFocusable(
+        onPressed: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
           width: 40,

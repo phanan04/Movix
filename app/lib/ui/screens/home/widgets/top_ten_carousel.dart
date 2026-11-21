@@ -3,6 +3,7 @@ import '../../../../core/models/movie_model.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../widgets/cached_poster_image.dart';
 import '../../../widgets/rating_badge.dart';
+import '../../../widgets/tv_focusable.dart';
 import '../../movie_detail/movie_detail_screen.dart';
 
 class TopTenCarousel extends StatelessWidget {
@@ -15,10 +16,53 @@ class TopTenCarousel extends StatelessWidget {
     this.onSeeAll,
   });
 
+  Widget _buildSeeAllCard(BuildContext context) {
+    return TVFocusable(
+      onPressed: onSeeAll,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 140,
+        height: 195,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border, width: 1),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Xem tất cả →',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (movies.isEmpty) return const SizedBox.shrink();
 
+    final isWide = MediaQuery.of(context).size.width >= 600;
     // Take at most 10 items
     final top10 = movies.take(10).toList();
 
@@ -32,7 +76,7 @@ class TopTenCarousel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Top 10 Movies This Week',
+                'Top 10 Phim Trong Tuần',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -40,17 +84,18 @@ class TopTenCarousel extends StatelessWidget {
                   letterSpacing: -0.3,
                 ),
               ),
-              GestureDetector(
-                onTap: onSeeAll,
-                child: const Text(
-                  'See all',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+              if (!isWide && onSeeAll != null)
+                GestureDetector(
+                  onTap: onSeeAll,
+                  child: const Text(
+                    'Xem tất cả',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -64,15 +109,19 @@ class TopTenCarousel extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             cacheExtent: 600,
-            itemCount: top10.length,
+            itemCount: top10.length + (isWide && onSeeAll != null ? 1 : 0),
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (context, index) {
+              if (index == top10.length) {
+                return _buildSeeAllCard(context);
+              }
+
               final movie = top10[index];
               final ratingVal = movie.voteAverage > 0 ? movie.voteAverage.toStringAsFixed(1) : (movie.quality.isNotEmpty ? movie.quality : 'FHD');
 
               return RepaintBoundary(
-                child: GestureDetector(
-                  onTap: () {
+                child: TVFocusable(
+                  onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -80,6 +129,7 @@ class TopTenCarousel extends StatelessWidget {
                       ),
                     );
                   },
+                  borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
                     width: 140,
                     child: Column(

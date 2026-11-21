@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/cache/user_storage.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../widgets/cached_poster_image.dart';
+import '../../../widgets/tv_focusable.dart';
 import '../../movie_detail/movie_detail_screen.dart';
 
 class ContinueWatchingCarousel extends StatelessWidget {
@@ -63,8 +64,8 @@ class ContinueWatchingCarousel extends StatelessWidget {
                   final remainingSecs = (item.durationSeconds - item.positionSeconds).clamp(0, item.durationSeconds);
                   final remainingMins = (remainingSecs / 60).ceil();
 
-                  return GestureDetector(
-                    onTap: () {
+                  return TVFocusable(
+                    onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -72,6 +73,7 @@ class ContinueWatchingCarousel extends StatelessWidget {
                         ),
                       );
                     },
+                    borderRadius: BorderRadius.circular(12),
                     child: SizedBox(
                       width: 210,
                       child: Column(

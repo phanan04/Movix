@@ -3,6 +3,7 @@ import '../../../../core/models/movie_model.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/cache/user_storage.dart';
 import '../../../widgets/cached_poster_image.dart';
+import '../../../widgets/tv_focusable.dart';
 import '../../movie_detail/movie_detail_screen.dart';
 
 class HeroBanner extends StatefulWidget {
@@ -20,16 +21,22 @@ class _HeroBannerState extends State<HeroBanner> {
   @override
   Widget build(BuildContext context) {
     final movie = widget.movie;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 600;
+    // Khóa chiều cao Hero Banner ở mức 45%–50% chiều cao màn hình (0.48)
+    final bannerHeight = screenHeight * 0.48;
+
     if (movie == null) {
       return Container(
-        height: 420,
+        height: bannerHeight,
         color: AppColors.surface,
       );
     }
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 420,
+        height: bannerHeight,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -64,25 +71,25 @@ class _HeroBannerState extends State<HeroBanner> {
 
             // Bottom Content
             Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
+              left: isWide ? 40 : 16,
+              right: isWide ? 40 : 16,
+              bottom: 20,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Title
                   Text(
                     movie.name,
-                    textAlign: TextAlign.center,
+                    textAlign: isWide ? TextAlign.left : TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 24,
+                    style: TextStyle(
+                      fontSize: isWide ? 28 : 24,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
-                      shadows: [
+                      shadows: const [
                         Shadow(color: Colors.black, blurRadius: 10),
                       ],
                     ),
@@ -94,7 +101,7 @@ class _HeroBannerState extends State<HeroBanner> {
                     movie.categoryNames.isNotEmpty
                         ? movie.categoryNames.take(3).join(' • ')
                         : '${movie.originName} • ${movie.year}',
-                    textAlign: TextAlign.center,
+                    textAlign: isWide ? TextAlign.left : TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -105,12 +112,12 @@ class _HeroBannerState extends State<HeroBanner> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Action Buttons: Play & My List
+                  // Action Buttons: Xem ngay & + Danh sách (TVFocusable)
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: isWide ? MainAxisAlignment.start : MainAxisAlignment.center,
                     children: [
-                      // Play Button
-                      ElevatedButton.icon(
+                      // Nút "Xem ngay" (Play)
+                      TVFocusable(
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -119,53 +126,67 @@ class _HeroBannerState extends State<HeroBanner> {
                             ),
                           );
                         },
-                        icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                        label: const Text(
-                          'Play',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          elevation: 0,
+                        borderRadius: BorderRadius.circular(24),
+                        child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                              SizedBox(width: 6),
+                              Text(
+                                'Xem ngay',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
 
-                      // My List Button
+                      // Nút "+ Danh sách" (My List)
                       ValueListenableBuilder<List<MovieItem>>(
                         valueListenable: _userStorage.myListNotifier,
                         builder: (context, _, __) {
                           final inList = _userStorage.isInMyList(movie.slug);
-                          return OutlinedButton.icon(
+                          return TVFocusable(
                             onPressed: () {
                               _userStorage.toggleMyList(movie);
                             },
-                            icon: Icon(
-                              inList ? Icons.check : Icons.add,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            label: Text(
-                              inList ? 'Added' : 'My List',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.white, width: 1.5),
+                            borderRadius: BorderRadius.circular(24),
+                            child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              shape: RoundedRectangleBorder(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: Colors.white70, width: 1.5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    inList ? Icons.check : Icons.add,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    inList ? 'Đã thêm' : '+ Danh sách',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );

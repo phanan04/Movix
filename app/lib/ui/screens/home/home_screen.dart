@@ -107,12 +107,12 @@ class HomeScreen extends ConsumerWidget {
                 data: (movies) => HeroBanner(
                   movie: movies.isNotEmpty ? movies.first : null,
                 ),
-                loading: () => const ShimmerSkeleton(
+                loading: () => ShimmerSkeleton(
                   width: double.infinity,
-                  height: 420,
+                  height: MediaQuery.of(context).size.height * 0.48,
                   borderRadius: 0,
                 ),
-                error: (_, __) => const SizedBox(height: 420),
+                error: (_, __) => SizedBox(height: MediaQuery.of(context).size.height * 0.48),
               ),
             ),
 

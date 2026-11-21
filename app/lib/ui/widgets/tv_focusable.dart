@@ -13,6 +13,8 @@ class TVFocusable extends StatefulWidget {
   final double scale;
   final Duration duration;
   final bool autoFocus;
+  final ValueChanged<bool>? onFocusChange;
+  final bool showBorder;
 
   const TVFocusable({
     super.key,
@@ -22,6 +24,8 @@ class TVFocusable extends StatefulWidget {
     this.scale = 1.06,
     this.duration = const Duration(milliseconds: 150),
     this.autoFocus = false,
+    this.onFocusChange,
+    this.showBorder = true,
   });
 
   @override
@@ -43,6 +47,7 @@ class _TVFocusableState extends State<TVFocusable> {
             _isFocused = focused;
           });
         }
+        widget.onFocusChange?.call(focused);
       },
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
@@ -67,10 +72,10 @@ class _TVFocusableState extends State<TVFocusable> {
             curve: Curves.easeInOut,
             decoration: BoxDecoration(
               borderRadius: radius,
-              border: _isFocused
+              border: (_isFocused && widget.showBorder)
                   ? Border.all(color: Colors.white, width: 2)
                   : Border.all(color: Colors.transparent, width: 2),
-              boxShadow: _isFocused
+              boxShadow: (_isFocused && widget.showBorder)
                   ? [
                       BoxShadow(
                         color: Colors.white.withValues(alpha: 0.35),

@@ -7,7 +7,6 @@ import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../widgets/episode_grid_widget.dart';
-import 'web_iframe_player.dart';
 import 'web_player_controller.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -35,7 +34,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   final GlobalKey _videoPlayerKey = GlobalKey();
 
   final bool _isWebMode = kIsWeb;
-  bool _useIframeFallback = false;
   bool _isPlaying = true;
   bool _isLocked = false;
   bool _showControls = true;
@@ -123,9 +121,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   void _startPlaying() {
     if (_isWebMode) {
-      if (!_useIframeFallback) {
-        webPlay(_webPlayerId);
-      }
+      webPlay(_webPlayerId);
     } else {
       _initNativePlayer(_currentEpisode.linkM3u8);
     }
@@ -157,18 +153,14 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       }
     } catch (e) {
       debugPrint('Native player error: $e');
-      if (mounted) {
-        setState(() {
-          _useIframeFallback = true;
-        });
-      }
+      _showHudToast('Lỗi tải video, vui lòng thử lại.');
     }
   }
 
   void _syncPlaybackState() {
     if (!mounted || _isDraggingSlider) return;
 
-    if (_isWebMode && !_useIframeFallback) {
+    if (_isWebMode) {
       final pos = webGetCurrentTime(_webPlayerId);
       final dur = webGetDuration(_webPlayerId);
       final playing = webIsPlaying(_webPlayerId);
@@ -278,7 +270,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   }
 
   void _seekRelative(double seconds) {
-    if (_isWebMode && !_useIframeFallback) {
+    if (_isWebMode) {
       webSeekRelative(_webPlayerId, seconds);
       setState(() {
         _currentPosition = (_currentPosition + seconds).clamp(0.0, _totalDuration > 0 ? _totalDuration : 99999.0);
@@ -290,7 +282,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   }
 
   void _seekTo(double seconds) {
-    if (_isWebMode && !_useIframeFallback) {
+    if (_isWebMode) {
       webSeekTo(_webPlayerId, seconds);
       setState(() {
         _currentPosition = seconds;
@@ -301,7 +293,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   }
 
   void _setPlaybackSpeed(double speed) {
-    if (_isWebMode && !_useIframeFallback) {
+    if (_isWebMode) {
       webSetSpeed(_webPlayerId, speed);
     } else if (_nativeController != null) {
       _nativeController!.setPlaybackSpeed(speed);
@@ -309,7 +301,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   }
 
   void _togglePlayPause() {
-    if (_isWebMode && !_useIframeFallback) {
+    if (_isWebMode) {
       final state = webTogglePlay(_webPlayerId);
       setState(() => _isPlaying = state);
     } else if (_nativeController != null) {
@@ -373,30 +365,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
         });
       }
     });
-  }
-
-  void _toggleFallbackMode() {
-    setState(() {
-      _useIframeFallback = !_useIframeFallback;
-      if (!_useIframeFallback) {
-        // Generate a new player element ID so that Flutter Web creates a fresh <video> element
-        _webPlayerId = 'movix_player_${_currentEpisode.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
-        _currentPosition = 0;
-        _totalDuration = 0;
-        _showControls = true;
-      }
-    });
-
-    if (!_useIframeFallback) {
-      // Allow the new DOM element to be inserted before starting playback
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && !_useIframeFallback) {
-          _startPlaying();
-        }
-      });
-    }
-
-    _showHudToast(_useIframeFallback ? 'Đã đổi sang Embed Dự Phòng' : 'Đã đổi sang Player HLS Nhanh');
   }
 
   void _switchEpisode(EpisodeItem nextEp) {
@@ -724,39 +692,31 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Video Element (Native or Web HLS or Embed Fallback)
+              // 1. Video Element (Native or Web HLS)
               Positioned.fill(
-                child: _useIframeFallback
-                    ? getIframePlayer(
-                        viewId: 'iframe_${_currentEpisode.slug}',
-                        embedUrl: _currentEpisode.linkEmbed.isNotEmpty
-                            ? _currentEpisode.linkEmbed
-                            : _currentEpisode.linkM3u8,
+                child: _isWebMode
+                    ? buildHlsVideoView(
+                        videoElementId: _webPlayerId,
+                        m3u8Url: _currentEpisode.linkM3u8,
                       )
-                    : (_isWebMode
-                        ? buildHlsVideoView(
-                            videoElementId: _webPlayerId,
-                            m3u8Url: _currentEpisode.linkM3u8,
+                    : (_nativeController != null && _nativeController!.value.isInitialized
+                        ? FittedBox(
+                            fit: _isZoomFit ? BoxFit.cover : BoxFit.contain,
+                            child: SizedBox(
+                              width: _nativeController!.value.size.width > 0
+                                  ? _nativeController!.value.size.width
+                                  : 16,
+                              height: _nativeController!.value.size.height > 0
+                                  ? _nativeController!.value.size.height
+                                  : 9,
+                              child: VideoPlayer(_nativeController!),
+                            ),
                           )
-                        : (_nativeController != null && _nativeController!.value.isInitialized
-                            ? FittedBox(
-                                fit: _isZoomFit ? BoxFit.cover : BoxFit.contain,
-                                child: SizedBox(
-                                  width: _nativeController!.value.size.width > 0
-                                      ? _nativeController!.value.size.width
-                                      : 16,
-                                  height: _nativeController!.value.size.height > 0
-                                      ? _nativeController!.value.size.height
-                                      : 9,
-                                  child: VideoPlayer(_nativeController!),
-                                ),
-                              )
-                            : const Center(child: CircularProgressIndicator(color: AppColors.primary)))),
+                        : const Center(child: CircularProgressIndicator(color: AppColors.primary))),
               ),
 
               // 2. YouTube Touch Gesture Layer: Single tap toggles show/hide controls cleanly
-              if (!_useIframeFallback)
-                Positioned.fill(
+              Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
@@ -794,7 +754,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 3. YouTube Ripple Left
-              if (_showLeftSeekRipple && !_useIframeFallback)
+              if (_showLeftSeekRipple)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -819,7 +779,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 4. YouTube Ripple Right
-              if (_showRightSeekRipple && !_useIframeFallback)
+              if (_showRightSeekRipple)
                 Positioned(
                   right: 0,
                   top: 0,
@@ -844,7 +804,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 5. YouTube 2X Speed Indicator
-              if (_isLongPressing2X && !_useIframeFallback)
+              if (_isLongPressing2X)
                 Positioned(
                   top: 16,
                   left: 0,
@@ -898,7 +858,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 ),
 
               // 7. Netflix-Style: Next Episode Floating Prompt
-              if (showNextEpPrompt && !_isLocked && nextEp != null && !_useIframeFallback)
+              if (showNextEpPrompt && !_isLocked && nextEp != null)
                 Positioned(
                   bottom: _showControls ? 64 : 16,
                   right: 14,
@@ -915,10 +875,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                   ),
                 ),
 
-              // 8. Mobile Controls Overlay: Dedicated Clean Fallback Overlay OR Netflix Controls Overlay
-              if (_useIframeFallback)
-                _buildFallbackEmbedOverlay()
-              else if (_showControls && !_isLongPressing2X)
+              // 8. Mobile Controls Overlay (Clean Stack with Zero Collision)
+              if (_showControls && !_isLongPressing2X)
                 _buildMobileControlsOverlay(),
             ],
           ),
@@ -929,7 +887,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     final controlsBar = isSeries
         ? Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: const BoxDecoration(
               color: Color(0xFF16181F),
               border: Border(
@@ -938,53 +896,29 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
               ),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(
-                  child: TextButton.icon(
-                    onPressed: hasPrev ? _playPrevEpisode : null,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor: hasPrev ? Colors.white : AppColors.textMuted,
-                    ),
-                    icon: const Icon(Icons.skip_previous_rounded, size: 16),
-                    label: const Text('Tập trước', style: TextStyle(fontSize: 12), maxLines: 1),
+                TextButton.icon(
+                  onPressed: hasPrev ? _playPrevEpisode : null,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: hasPrev ? Colors.white : AppColors.textMuted,
                   ),
+                  icon: const Icon(Icons.skip_previous_rounded, size: 18),
+                  label: const Text('Tập trước', style: TextStyle(fontSize: 12.5), maxLines: 1),
                 ),
-                Flexible(
-                  child: TextButton.icon(
-                    onPressed: _toggleFallbackMode,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(
-                      _useIframeFallback ? Icons.ondemand_video_rounded : Icons.flash_on_rounded,
-                      size: 16,
-                      color: AppColors.primary,
-                    ),
-                    label: Text(
-                      _useIframeFallback ? 'Dự phòng' : 'HLS Nhanh',
-                      style: const TextStyle(fontSize: 12, color: AppColors.primary),
-                      maxLines: 1,
-                    ),
+                TextButton.icon(
+                  onPressed: hasNext ? _playNextEpisode : null,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: hasNext ? Colors.white : AppColors.textMuted,
                   ),
-                ),
-                Flexible(
-                  child: TextButton.icon(
-                    onPressed: hasNext ? _playNextEpisode : null,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor: hasNext ? Colors.white : AppColors.textMuted,
-                    ),
-                    icon: const Icon(Icons.skip_next_rounded, size: 16),
-                    label: const Text('Tập tiếp', style: TextStyle(fontSize: 12), maxLines: 1),
-                  ),
+                  icon: const Icon(Icons.skip_next_rounded, size: 18),
+                  label: const Text('Tập tiếp', style: TextStyle(fontSize: 12.5), maxLines: 1),
                 ),
               ],
             ),
@@ -1349,45 +1283,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       ),
                     ),
 
-                    // Quick Switch Player Source (HLS Nhanh vs Dự Phòng)
-                    InkWell(
-                      onTap: _toggleFallbackMode,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: _useIframeFallback
-                              ? const Color(0xFFE50914).withValues(alpha: 0.25)
-                              : Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: _useIframeFallback ? const Color(0xFFE50914) : Colors.white24,
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _useIframeFallback ? Icons.ondemand_video_rounded : Icons.flash_on_rounded,
-                              size: 14,
-                              color: _useIframeFallback ? const Color(0xFFE50914) : Colors.amberAccent,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _useIframeFallback ? 'Dự phòng' : 'HLS Nhanh',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _useIframeFallback ? const Color(0xFFE50914) : Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
                     // Netflix Settings / Audio / Resolution button
                     IconButton(
                       icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
@@ -1719,173 +1614,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
             ),
         ],
       ),
-    );
-  }
-
-  // Fallback (Embed) Controls Overlay:
-  // Shows ONLY a non-intrusive floating top header bar with Back, Title, and "Đổi về HLS Nhanh".
-  // The center and bottom areas remain 100% transparent and unobstructed so that the user
-  // interacts directly with the embed player's own native controls without any duplicate UI.
-  Widget _buildFallbackEmbedOverlay() {
-    return Stack(
-      children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xE6000000),
-                  Color(0x99000000),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                child: Row(
-                  children: [
-                    // Back Button
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white24, width: 0.8),
-                        ),
-                        child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Movie Title & Episode Information
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.movie.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.bold,
-                              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.amber, width: 0.8),
-                                ),
-                                child: const Text(
-                                  'Embed Dự Phòng',
-                                  style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              if (widget.allEpisodes.length > 1 || _currentEpisode.name.isNotEmpty)
-                                Text(
-                                  _currentEpisode.name.toLowerCase().startsWith('tập')
-                                      ? _currentEpisode.name
-                                      : 'Tập ${_currentEpisode.name}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Series Episode Drawer Button (if multi-episode series)
-                    if (widget.allEpisodes.length > 1) ...[
-                      InkWell(
-                        onTap: () => setState(() => _showEpisodeDrawer = !_showEpisodeDrawer),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _showEpisodeDrawer
-                                ? const Color(0xFFE50914)
-                                : Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white24, width: 0.8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.video_library_rounded, size: 14, color: Colors.white),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Tập (${widget.allEpisodes.length})',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-
-                    // Switch back to HLS Button - ALWAYS VISIBLE & RELIABLE
-                    InkWell(
-                      onTap: _toggleFallbackMode,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE50914),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFE50914).withValues(alpha: 0.5),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.flash_on_rounded, size: 16, color: Colors.amberAccent),
-                            SizedBox(width: 5),
-                            Text(
-                              'Đổi về HLS Nhanh',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -170,3 +170,10 @@ final searchResultsProvider = FutureProvider<List<MovieItem>>((ref) async {
   final api = ref.watch(apiServiceProvider);
   return api.searchMovies(query);
 });
+
+// Phim tương tự (theo thể loại)
+final similarMoviesProvider = FutureProvider.family<List<MovieItem>, String>((ref, categorySlug) async {
+  if (categorySlug.isEmpty) return [];
+  final api = ref.watch(apiServiceProvider);
+  return api.getMoviesByCategory(categorySlug, page: 1, limit: 15);
+});

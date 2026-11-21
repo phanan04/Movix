@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/cache/cache_manager.dart';
@@ -415,74 +416,216 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showAppUpdateDialog(BuildContext context) {
+  bool _isNewerVersion(String latest, String current) {
+    try {
+      final cleanLatest = latest.replaceAll(RegExp(r'[^0-9.]'), '');
+      final cleanCurrent = current.replaceAll(RegExp(r'[^0-9.]'), '');
+      final latestParts = cleanLatest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final currentParts = cleanCurrent.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final maxLen = latestParts.length > currentParts.length ? latestParts.length : currentParts.length;
+      for (int i = 0; i < maxLen; i++) {
+        final l = i < latestParts.length ? latestParts[i] : 0;
+        final c = i < currentParts.length ? currentParts[i] : 0;
+        if (l > c) return true;
+        if (l < c) return false;
+      }
+      return false;
+    } catch (_) {
+      return latest != current;
+    }
+  }
+
+  Future<void> _showAppUpdateDialog(BuildContext context) async {
+    const currentVersion = '1.0.0';
+
+    // 1. Hiển thị dialog đang kiểm tra
     showDialog(
       context: context,
-      builder: (dialogCtx) {
-        return AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
-              SizedBox(width: 10),
-              Text(
-                'Cập nhật ứng dụng',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
+      barrierDismissible: false,
+      builder: (loadingCtx) => Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border, width: 0.5),
           ),
-          content: Column(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Bạn đang sử dụng phiên bản Movix mới nhất (v1.0.0).',
-                style: TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.primary),
               ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border, width: 0.5),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('• Phiên bản: 1.0.0 (Release)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                    SizedBox(height: 4),
-                    Text('• Nền tảng: Flutter 3.50 & Firebase', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                    SizedBox(height: 4),
-                    Text('• Trạng thái: Bản mới nhất (Latest)', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+              SizedBox(width: 16),
+              Text(
+                'Đang kiểm tra bản cập nhật...',
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Đóng', style: TextStyle(color: AppColors.textSecondary)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(dialogCtx);
-                final uri = Uri.parse('https://github.com/phanan04/Movix/releases');
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-              child: const Text('Xem trên GitHub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
+        ),
+      ),
     );
+
+    // 2. Fetch GitHub API
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          headers: {'Accept': 'application/vnd.github.v3+json'},
+        ),
+      );
+
+      final response = await dio.get('https://api.github.com/repos/phanan04/Movix/releases/latest');
+
+      // Tắt loading dialog
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final tagName = (data['tag_name'] ?? '').toString();
+        final htmlUrl = (data['html_url'] ?? 'https://github.com/phanan04/Movix/releases').toString();
+        final bodyText = (data['body'] ?? '').toString();
+
+        // Tìm asset file APK nếu có
+        String? apkDownloadUrl;
+        int? apkSize;
+        if (data['assets'] is List) {
+          final assets = data['assets'] as List;
+          for (final asset in assets) {
+            if (asset is Map && asset['name'] != null && asset['name'].toString().endsWith('.apk')) {
+              apkDownloadUrl = asset['browser_download_url']?.toString();
+              apkSize = asset['size'] as int?;
+              break;
+            }
+          }
+        }
+
+        final hasNewUpdate = _isNewerVersion(tagName, currentVersion);
+
+        if (!context.mounted) return;
+
+        showDialog(
+          context: context,
+          builder: (dialogCtx) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  Icon(
+                    hasNewUpdate ? Icons.system_update_rounded : Icons.check_circle_rounded,
+                    color: hasNewUpdate ? AppColors.primary : Colors.green,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    hasNewUpdate ? 'Có bản cập nhật mới!' : 'Cập nhật ứng dụng',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasNewUpdate
+                        ? 'Đã có phiên bản $tagName sẵn sàng để cập nhật.'
+                        : 'Bạn đang sử dụng phiên bản Movix mới nhất (v$currentVersion).',
+                    style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border, width: 0.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• Phiên bản hiện tại: v$currentVersion',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        if (hasNewUpdate) ...[
+                          Text('• Phiên bản mới nhất: $tagName',
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          if (apkSize != null)
+                            Text('• Dung lượng APK: ${(apkSize / (1024 * 1024)).toStringAsFixed(1)} MB',
+                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          const Text('• Trạng thái: Cần cập nhật (Update available)',
+                              style: TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ] else ...[
+                          const Text('• Nền tảng: Flutter 3.50 & Firebase',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          const Text('• Trạng thái: Bản mới nhất (Latest)',
+                              style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (hasNewUpdate && bodyText.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Thông tin bản phát hành:',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      bodyText.split('\n').take(3).join('\n'),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, height: 1.3),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: Text(hasNewUpdate ? 'Để sau' : 'Đóng',
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(dialogCtx);
+                    final targetUrl = (hasNewUpdate && apkDownloadUrl != null) ? apkDownloadUrl : htmlUrl;
+                    final uri = Uri.parse(targetUrl);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: Text(
+                    hasNewUpdate
+                        ? (apkDownloadUrl != null ? 'Tải APK ngay' : 'Xem bản phát hành')
+                        : 'Xem trên GitHub',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        AppToast.show(context, 'Không thể kiểm tra cập nhật. Vui lòng kiểm tra kết nối mạng.');
+      }
+    }
   }
 }

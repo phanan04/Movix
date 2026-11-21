@@ -749,34 +749,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 1. Huy hiệu N SERIES đặc trưng Netflix (đỏ N + trắng SERIES)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'N',
-                            style: TextStyle(
-                              color: Color(0xFFE50914),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isSingleEpisodeMovie ? 'F I L M' : 'S E R I E S',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // 2. Tên phim chính cỡ lớn đậm nét đặc trưng kèm đổ bóng 2 tầng chống nền sáng
+                      // Tên phim chính cỡ lớn đậm nét đặc trưng kèm đổ bóng 2 tầng chống nền sáng
                       Text(
                         mainTitle,
                         maxLines: 2,

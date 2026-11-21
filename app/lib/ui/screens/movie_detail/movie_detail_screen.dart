@@ -718,8 +718,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         ? episodes.firstWhere((e) => e.slug == progress.episodeSlug, orElse: () => episodes.first)
         : (episodes.isNotEmpty ? episodes.first : null);
 
-    // Logic phim lẻ vs phim bộ: Nếu chỉ có <= 1 tập và <= 1 server, ẩn mục Danh sách tập
-    final isSingleEpisodeMovie = episodes.length <= 1 && movie.episodes.length <= 1;
+    // Logic phim lẻ vs phim bộ:
+    // Phim lẻ: khi movie.type == 'single' hoặc tất cả các server đều chỉ có <= 1 tập (ví dụ Tập Full).
+    // Phim bộ: chỉ khi có ít nhất 1 server có từ 2 tập trở lên.
+    final maxEpisodesAcrossServers = movie.episodes.fold<int>(
+      0,
+      (max, s) => s.serverData.length > max ? s.serverData.length : max,
+    );
+    final isSingleEpisodeMovie = movie.type == 'single' || maxEpisodesAcrossServers <= 1;
 
     // Cắt bỏ phần tên phụ sau dấu / ở tiêu đề chính
     final mainTitle = movie.name.split('/').first.trim();
@@ -905,6 +911,47 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
+
+                  // Chọn Server phát cho phim lẻ có nhiều bản thuyết minh / vietsub
+                  if (isSingleEpisodeMovie && movie.episodes.length > 1) ...[
+                    Row(
+                      children: List.generate(movie.episodes.length, (sIdx) {
+                        final isServerSelected = _selectedServerIndex == sIdx;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: TVFocusable(
+                            showBorder: false,
+                            onPressed: () {
+                              setState(() {
+                                _selectedServerIndex = sIdx;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: isServerSelected ? const Color(0xFFE50914) : const Color(0x66000000),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isServerSelected ? const Color(0xFFE50914) : Colors.white24,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                movie.episodes[sIdx].serverName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isServerSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   // 8. Cụm menu dọc chuẩn Netflix
                   _buildActionMenuItem(

@@ -29,32 +29,35 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
   String _selectedRegion = 'all';
   String _selectedYear = 'all';
 
+  bool _isCategoryExpanded = false;
+
+  // Loại phim & Định dạng (Đã loại bỏ chip 'Hoạt Hình' trùng lặp)
   final List<Map<String, String>> _types = [
     {'name': 'Tất cả', 'slug': 'all'},
     {'name': 'Phim Lẻ', 'slug': 'phim-le'},
     {'name': 'Phim Bộ', 'slug': 'phim-bo'},
     {'name': 'Phim Chiếu Rạp', 'slug': 'phim-chieu-rap'},
-    {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
     {'name': 'TV Shows', 'slug': 'tv-shows'},
   ];
 
+  // Thể loại phim (Đã sắp xếp thứ tự A-Z sau nút 'Tất cả')
   final List<Map<String, String>> _categories = [
     {'name': 'Tất cả', 'slug': 'all'},
-    {'name': 'Hành Động', 'slug': 'hanh-dong'},
-    {'name': 'Cổ Trang', 'slug': 'co-trang'},
-    {'name': 'Viễn Tưởng', 'slug': 'vien-tuong'},
-    {'name': 'Kinh Dị', 'slug': 'kinh-di'},
-    {'name': 'Tình Cảm', 'slug': 'tinh-cam'},
-    {'name': 'Hài Hước', 'slug': 'hai-huoc'},
-    {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
-    {'name': 'Tâm Lý', 'slug': 'tam-ly'},
-    {'name': 'Võ Thuật', 'slug': 'vo-thuat'},
-    {'name': 'Phiêu Lưu', 'slug': 'phieu-luu'},
-    {'name': 'Thần Thoại', 'slug': 'than-thoai'},
-    {'name': 'Học Đường', 'slug': 'hoc-duong'},
-    {'name': 'Gia Đình', 'slug': 'gia-dinh'},
-    {'name': 'Tài Liệu', 'slug': 'tai-lieu'},
     {'name': 'Bí Ẩn', 'slug': 'bi-an'},
+    {'name': 'Cổ Trang', 'slug': 'co-trang'},
+    {'name': 'Gia Đình', 'slug': 'gia-dinh'},
+    {'name': 'Hài Hước', 'slug': 'hai-huoc'},
+    {'name': 'Hành Động', 'slug': 'hanh-dong'},
+    {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
+    {'name': 'Học Đường', 'slug': 'hoc-duong'},
+    {'name': 'Kinh Dị', 'slug': 'kinh-di'},
+    {'name': 'Phiêu Lưu', 'slug': 'phieu-luu'},
+    {'name': 'Tài Liệu', 'slug': 'tai-lieu'},
+    {'name': 'Tâm Lý', 'slug': 'tam-ly'},
+    {'name': 'Thần Thoại', 'slug': 'than-thoai'},
+    {'name': 'Tình Cảm', 'slug': 'tinh-cam'},
+    {'name': 'Viễn Tưởng', 'slug': 'vien-tuong'},
+    {'name': 'Võ Thuật', 'slug': 'vo-thuat'},
   ];
 
   final List<Map<String, String>> _regions = [
@@ -108,11 +111,21 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Categories display slice: 2 rows (~7 items) or all
+    const defaultVisibleCount = 7;
+    final isSelectedBeyondVisible = !_isCategoryExpanded &&
+        _selectedCategory != 'all' &&
+        _categories.indexWhere((c) => c['slug'] == _selectedCategory) >= defaultVisibleCount;
+
+    final visibleCategories = (_isCategoryExpanded || isSelectedBeyondVisible)
+        ? _categories
+        : _categories.take(defaultVisibleCount).toList();
+
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
+        maxHeight: MediaQuery.of(context).size.height * 0.82,
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +133,7 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
           // Drag Handle
           Center(
             child: Container(
-              width: 40,
+              width: 38,
               height: 4,
               decoration: BoxDecoration(
                 color: AppColors.borderLight,
@@ -128,7 +141,7 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // Header
           Row(
@@ -155,7 +168,7 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           const Divider(color: AppColors.border, height: 1),
 
           Expanded(
@@ -163,75 +176,82 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
               physics: const BouncingScrollPhysics(),
               children: [
                 const SizedBox(height: 14),
-                // 1. Sort By
+
+                // 1. Sort By (1 hàng cuộn ngang - SingleChildScrollView Axis.horizontal)
                 _buildSectionTitle('Sắp xếp theo'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _sortOptions.map((opt) {
+                _buildHorizontalChips(
+                  _sortOptions.map((opt) {
                     final isSel = _selectedSort == opt['id'];
                     return _buildChip(opt['name']!, isSel, () {
                       setState(() => _selectedSort = opt['id']!);
                     });
                   }).toList(),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                // 1.5. Movie Type (Định dạng / Loại phim)
+                // 2. Movie Type (1 hàng cuộn ngang, đã xóa Hoạt hình)
                 _buildSectionTitle('Loại phim & Định dạng'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _types.map((type) {
+                _buildHorizontalChips(
+                  _types.map((type) {
                     final isSel = _selectedType == type['slug'];
                     return _buildChip(type['name']!, isSel, () {
                       setState(() => _selectedType = type['slug']!);
                     });
                   }).toList(),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                // 2. Categories
+                // 3. Categories (Sắp xếp A-Z, Wrap spacing: 8, runSpacing: 8, mặc định 2 dòng + chip xem thêm)
                 _buildSectionTitle('Thể loại phim'),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _categories.map((cat) {
-                    final isSel = _selectedCategory == cat['slug'];
-                    return _buildChip(cat['name']!, isSel, () {
-                      setState(() => _selectedCategory = cat['slug']!);
-                    });
-                  }).toList(),
+                  children: [
+                    ...visibleCategories.map((cat) {
+                      final isSel = _selectedCategory == cat['slug'];
+                      return _buildChip(cat['name']!, isSel, () {
+                        setState(() => _selectedCategory = cat['slug']!);
+                      });
+                    }),
+                    // Chip "+ Xem thêm" / "- Thu gọn"
+                    _buildChip(
+                      _isCategoryExpanded ? 'Thu gọn' : '+ Xem thêm',
+                      false,
+                      () {
+                        setState(() {
+                          _isCategoryExpanded = !_isCategoryExpanded;
+                        });
+                      },
+                      isAction: true,
+                      icon: _isCategoryExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                // 3. Regions
+                // 4. Regions (1 hàng cuộn ngang - SingleChildScrollView Axis.horizontal)
                 _buildSectionTitle('Quốc gia & Khu vực'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _regions.map((reg) {
+                _buildHorizontalChips(
+                  _regions.map((reg) {
                     final isSel = _selectedRegion == reg['slug'];
                     return _buildChip(reg['name']!, isSel, () {
                       setState(() => _selectedRegion = reg['slug']!);
                     });
                   }).toList(),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                // 4. Years
+                // 5. Years (1 hàng cuộn ngang - SingleChildScrollView Axis.horizontal)
                 _buildSectionTitle('Năm phát hành'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _years.map((yr) {
+                _buildHorizontalChips(
+                  _years.map((yr) {
                     final isSel = _selectedYear == yr;
                     return _buildChip(yr, isSel, () {
                       setState(() => _selectedYear = yr);
                     });
                   }).toList(),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
               ],
             ),
           ),
@@ -260,11 +280,11 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         title,
         style: const TextStyle(
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.bold,
           color: AppColors.textPrimary,
         ),
@@ -272,27 +292,72 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
     );
   }
 
-  Widget _buildChip(String label, bool isSelected, VoidCallback onTap) {
+  /// 1 hàng cuộn ngang duy nhất với khoảng cách giữa các chip là 8px
+  Widget _buildHorizontalChips(List<Widget> chips) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: chips.asMap().entries.map((entry) {
+          final isLast = entry.key == chips.length - 1;
+          return Padding(
+            padding: EdgeInsets.only(right: isLast ? 0 : 8),
+            child: entry.value,
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Đồng bộ chiều cao tất cả các chip là 34px, padding ngang 14px, bo góc 20px
+  Widget _buildChip(
+    String label,
+    bool isSelected,
+    VoidCallback onTap, {
+    bool isAction = false,
+    IconData? icon,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.surfaceLight,
+          color: isAction
+              ? AppColors.primary.withValues(alpha: 0.12)
+              : (isSelected ? AppColors.primary : AppColors.surfaceLight),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
+            color: isAction
+                ? AppColors.primary.withValues(alpha: 0.6)
+                : (isSelected ? AppColors.primary : AppColors.border),
             width: 1,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : AppColors.textSecondary,
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isAction
+                    ? AppColors.primary
+                    : (isSelected ? Colors.white : AppColors.textSecondary),
+                fontSize: 12,
+                fontWeight: isSelected || isAction ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+            if (icon != null) ...[
+              const SizedBox(width: 4),
+              Icon(
+                icon,
+                size: 16,
+                color: AppColors.primary,
+              ),
+            ],
+          ],
         ),
       ),
     );

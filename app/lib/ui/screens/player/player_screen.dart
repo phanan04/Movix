@@ -1188,6 +1188,42 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
               ),
             ),
 
+          // 2.5. Floating Skip Intro Button (Netflix Style: directly above progress bar on the right)
+          if (!_isLocked && widget.allEpisodes.length > 1 && _enableSkipIntro && _currentPosition <= 120)
+            Positioned(
+              bottom: 46,
+              right: 12,
+              child: InkWell(
+                onTap: _skipIntro,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.fast_forward_rounded, color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Bỏ qua mở đầu',
+                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
           // 3. Bottom Bar: Scrubber + Time + Quality + Aspect Ratio + Speed + Fullscreen
           if (!_isLocked)
             Positioned(
@@ -1228,117 +1264,89 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       ),
                     ),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           '${_formatDuration(_currentPosition)} / ${_formatDuration(_totalDuration)}',
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
-                        Row(
-                          children: [
-                            // Volume / Mute button
-                            IconButton(
-                              iconSize: 20,
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                              icon: Icon(
-                                _isMuted || _volume == 0
-                                    ? Icons.volume_off_rounded
-                                    : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                                color: Colors.white,
-                              ),
-                              tooltip: 'Chỉnh âm lượng',
-                              onPressed: _toggleMute,
+                        const Spacer(),
+                        // Volume / Mute button
+                        IconButton(
+                          iconSize: 18,
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                          icon: Icon(
+                            _isMuted || _volume == 0
+                                ? Icons.volume_off_rounded
+                                : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Chỉnh âm lượng',
+                          onPressed: _toggleMute,
+                        ),
+                        const SizedBox(width: 2),
+                        // Quality badge button
+                        InkWell(
+                          onTap: _cycleQuality,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            // Skip Intro button on bottom control bar (Phương án A: Chỉ phim bộ, nhảy 01:30)
-                            if (widget.allEpisodes.length > 1 && _enableSkipIntro && _currentPosition <= 120)
-                              InkWell(
-                                onTap: _skipIntro,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.fast_forward_rounded, color: Colors.white, size: 13),
-                                      SizedBox(width: 3),
-                                      Text(
-                                        'Bỏ qua mở đầu',
-                                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            // Quality badge button
-                            InkWell(
-                              onTap: _cycleQuality,
-                              borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  _selectedQuality == 'Tự động' ? 'Auto' : _selectedQuality.split(' ').first,
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                            child: Text(
+                              _selectedQuality == 'Tự động' ? 'Auto' : _selectedQuality.split(' ').first,
+                              style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
                             ),
-                            // Aspect ratio toggle button (Fit vs Zoom)
-                            InkWell(
-                              onTap: _toggleAspectRatio,
-                              borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  _isZoomFit ? 'Zoom' : '16:9',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        // Aspect ratio toggle button (Fit vs Zoom)
+                        InkWell(
+                          onTap: _toggleAspectRatio,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            // Speed badge button
-                            InkWell(
-                              onTap: _cycleSpeed,
-                              borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '${_currentSpeed}x',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                            child: Text(
+                              _isZoomFit ? 'Zoom' : '16:9',
+                              style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
                             ),
-                            // Prominent Fullscreen Button
-                            IconButton(
-                              iconSize: 26,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                              icon: Icon(
-                                _isFullScreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-                                color: Colors.white,
-                              ),
-                              tooltip: _isFullScreen ? 'Thu nhỏ' : 'Toàn màn hình',
-                              onPressed: _toggleFullScreen,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        // Speed badge button
+                        InkWell(
+                          onTap: _cycleSpeed,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ],
+                            child: Text(
+                              '${_currentSpeed}x',
+                              style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        // Prominent Fullscreen Button
+                        IconButton(
+                          iconSize: 22,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          icon: Icon(
+                            _isFullScreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+                            color: Colors.white,
+                          ),
+                          tooltip: _isFullScreen ? 'Thu nhỏ' : 'Toàn màn hình',
+                          onPressed: _toggleFullScreen,
                         ),
                       ],
                     ),

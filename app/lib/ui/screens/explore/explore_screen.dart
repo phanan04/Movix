@@ -8,20 +8,6 @@ import '../../widgets/movie_card.dart';
 import '../../widgets/shimmer_loading.dart';
 import 'widgets/sort_filter_bottom_sheet.dart';
 
-const List<Map<String, String>> categoriesList = [
-  {'name': 'Tất cả', 'slug': 'all'},
-  {'name': 'Hành Động', 'slug': 'hanh-dong'},
-  {'name': 'Cổ Trang', 'slug': 'co-trang'},
-  {'name': 'Viễn Tưởng', 'slug': 'vien-tuong'},
-  {'name': 'Kinh Dị', 'slug': 'kinh-di'},
-  {'name': 'Tình Cảm', 'slug': 'tinh-cam'},
-  {'name': 'Hài Hước', 'slug': 'hai-huoc'},
-  {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
-  {'name': 'Võ Thuật', 'slug': 'vo-thuat'},
-  {'name': 'Tâm Lý', 'slug': 'tam-ly'},
-  {'name': 'Phiêu Lưu', 'slug': 'phieu-luu'},
-];
-
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
 
@@ -213,50 +199,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-            ],
-
-            // Category Chips (Only show when not actively searching)
-            if (!isSearching) ...[
-              SizedBox(
-                height: 38,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: categoriesList.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final item = categoriesList[index];
-                    final isSelected = filter.category == item['slug'];
-
-                    return ChoiceChip(
-                      label: Text(item['name']!),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected) {
-                          ref.read(exploreFilterProvider.notifier).updateFilter(category: item['slug']!);
-                        }
-                      },
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : AppColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      ),
-                      selectedColor: AppColors.primary,
-                      backgroundColor: AppColors.surface,
-                      side: BorderSide(
-                        color: isSelected ? AppColors.primary : AppColors.border,
-                        width: 1,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      showCheckmark: false,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
             ],
 
             // Content Grid: Search Results OR Category Browse (with RefreshIndicator)

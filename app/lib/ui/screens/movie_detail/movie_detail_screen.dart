@@ -622,19 +622,18 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
 
             // 4. Lớp chứa nội dung chữ và nút bấm (Nằm trên cùng)
             SafeArea(
-              child: Column(
-                children: [
-                  // Thanh điều hướng trên cùng chỉ giữ nút quay lại bên trái
-                  _buildTopNavBar(context),
-
-                  // Nội dung các trạng thái chuyển đổi mượt mà
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      child: _buildCurrentStateView(movie, movieItem, episodes, progress),
-                    ),
-                  ),
-                ],
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: _viewMode == DetailViewMode.overview
+                    ? _buildOverviewView(movie, movieItem, episodes, progress)
+                    : Column(
+                        children: [
+                          _buildTopNavBar(context),
+                          Expanded(
+                            child: _buildCurrentStateView(movie, movieItem, episodes, progress),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ],
@@ -745,6 +744,22 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Nút Quay lại (Back)
+                  TVFocusable(
+                    onPressed: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
                   // Tên phim chính cỡ lớn đậm nét đặc trưng kèm đổ bóng 2 tầng chống nền sáng
                   Text(
                     mainTitle,
@@ -938,7 +953,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       return Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          padding: const EdgeInsets.only(left: 48, top: 0, bottom: 12),
+          padding: const EdgeInsets.only(left: 36, top: 16, bottom: 12),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: width * 0.46),
             child: overviewLeft,
@@ -949,7 +964,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
 
     // Nếu phim có nhiều tập: chia 2 cột (Trái: Thông tin phim, Phải: Danh sách tập thumbnail chuẩn Netflix)
     return Padding(
-      padding: const EdgeInsets.only(left: 48, top: 0, bottom: 12),
+      padding: const EdgeInsets.only(left: 36, right: 28, top: 16, bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -974,7 +989,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   /// Danh sách tập bên phải chuẩn Netflix TV:
   /// - Thanh chọn Server và Tab phân đoạn tập (Tập 1-20, Tập 21-40...) ở trên đầu giúp không phải kéo chuột mệt
   /// - Thẻ tập thu gọn: Thumbnail 16:9 sắc nét, nhãn "Tập X", thời lượng, không có miêu tả giả lặp lại
-  /// - Lưới 2 cột tối ưu không gian cho màn hình ngang
+  /// - Lưới 2 cột tối ưu không gian cho màn hình ngang, nền trong suốt giữ trọn vẹn backdrop phim
   Widget _buildNetflixEpisodeList(
     MovieDetail movie,
     List<EpisodeItem> episodes,
@@ -989,119 +1004,113 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     final endIndex = (startIndex + chunkSize).clamp(0, episodes.length);
     final displayedEpisodes = episodes.isNotEmpty ? episodes.sublist(startIndex, endIndex) : <EpisodeItem>[];
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Colors.transparent,
-            const Color(0xFF0F1014).withValues(alpha: 0.75),
-            const Color(0xFF0F1014).withValues(alpha: 0.92),
-          ],
-          stops: const [0.0, 0.12, 1.0],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Server selection & Episode Range Tabs (Không phải kéo xuống nhiều khi nhiều tập)
-          Padding(
-            padding: const EdgeInsets.only(left: 20, right: 28, top: 2, bottom: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Danh sách tập (${episodes.length} tập)',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const Spacer(),
-                    // Chọn Server phát (nếu có từ 2 server trở lên)
-                    if (movie.episodes.length > 1) ...[
-                      ...List.generate(movie.episodes.length, (sIdx) {
-                        final isServerSelected = _selectedServerIndex == sIdx;
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: TVFocusable(
-                            showBorder: false,
-                            onPressed: () {
-                              setState(() {
-                                _selectedServerIndex = sIdx;
-                                _selectedChunkIndex = 0;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(6),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isServerSelected ? const Color(0xFFE50914) : const Color(0x33FFFFFF),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                movie.episodes[sIdx].serverName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isServerSelected ? FontWeight.bold : FontWeight.normal,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ],
-                ),
-                // Thanh phân đoạn khoảng tập (Tập 1 - 20, Tập 21 - 40...) giúp nhảy nhanh đến tập cần xem
-                if (totalChunks > 1) ...[
-                  const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: List.generate(totalChunks, (c) {
-                        final isChunkSelected = c == currentChunk;
-                        final cStart = c * chunkSize + 1;
-                        final cEnd = ((c + 1) * chunkSize).clamp(1, episodes.length);
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: TVFocusable(
-                            showBorder: false,
-                            onPressed: () => setState(() => _selectedChunkIndex = c),
-                            borderRadius: BorderRadius.circular(6),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: isChunkSelected ? Colors.white : const Color(0x2EFFFFFF),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: isChunkSelected ? Colors.white : Colors.white24,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                'Tập $cStart - $cEnd',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isChunkSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isChunkSelected ? Colors.black : Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header: Server selection & Episode Range Tabs (Không phải kéo xuống nhiều khi nhiều tập)
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 4, top: 0, bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Danh sách tập (${episodes.length} tập)',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 6),
+                      ],
                     ),
                   ),
+                  const Spacer(),
+                  // Chọn Server phát (nếu có từ 2 server trở lên)
+                  if (movie.episodes.length > 1) ...[
+                    ...List.generate(movie.episodes.length, (sIdx) {
+                      final isServerSelected = _selectedServerIndex == sIdx;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: TVFocusable(
+                          showBorder: false,
+                          onPressed: () {
+                            setState(() {
+                              _selectedServerIndex = sIdx;
+                              _selectedChunkIndex = 0;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isServerSelected ? const Color(0xFFE50914) : const Color(0x66000000),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isServerSelected ? const Color(0xFFE50914) : Colors.white24,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              movie.episodes[sIdx].serverName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isServerSelected ? FontWeight.bold : FontWeight.normal,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
                 ],
+              ),
+              // Thanh phân đoạn khoảng tập (Tập 1 - 20, Tập 21 - 40...) giúp nhảy nhanh đến tập cần xem
+              if (totalChunks > 1) ...[
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: List.generate(totalChunks, (c) {
+                      final isChunkSelected = c == currentChunk;
+                      final cStart = c * chunkSize + 1;
+                      final cEnd = ((c + 1) * chunkSize).clamp(1, episodes.length);
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: TVFocusable(
+                          showBorder: false,
+                          onPressed: () => setState(() => _selectedChunkIndex = c),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isChunkSelected ? Colors.white : const Color(0x66000000),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isChunkSelected ? Colors.white : Colors.white24,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              'Tập $cStart - $cEnd',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isChunkSelected ? FontWeight.bold : FontWeight.w500,
+                                color: isChunkSelected ? Colors.black : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
               ],
+            ],
             ),
           ),
 
@@ -1109,15 +1118,15 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final isMultiCol = constraints.maxWidth >= 480 && displayedEpisodes.length > 4;
+                final isMultiCol = constraints.maxWidth >= 460 && displayedEpisodes.length > 4;
                 final crossAxisCount = isMultiCol ? 2 : 1;
                 final rowCount = (displayedEpisodes.length / crossAxisCount).ceil();
 
                 return ListView.separated(
-                  padding: const EdgeInsets.only(left: 20, right: 28, bottom: 20),
+                  padding: const EdgeInsets.only(left: 4, right: 4, bottom: 16),
                   physics: const BouncingScrollPhysics(),
                   itemCount: rowCount,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, rowIndex) {
                     if (crossAxisCount == 1) {
                       final ep = displayedEpisodes[rowIndex];
@@ -1144,7 +1153,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                             isWide: true,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: idx2 < displayedEpisodes.length
                               ? _buildCompactEpisodeCard(
@@ -1165,8 +1174,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   /// Thẻ tập thu gọn chuẩn Netflix: 16:9 thumbnail + Tên tập + Thời lượng

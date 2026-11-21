@@ -38,6 +38,38 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     ref.read(searchQueryProvider.notifier).setQuery('');
   }
 
+  String _getTypeLabel(String slug) {
+    switch (slug) {
+      case 'phim-le': return 'Phim Lẻ';
+      case 'phim-bo': return 'Phim Bộ';
+      case 'phim-chieu-rap': return 'Chiếu Rạp';
+      case 'hoat-hinh': return 'Hoạt Hình';
+      case 'tv-shows': return 'TV Shows';
+      default: return slug;
+    }
+  }
+
+  String _getCategoryLabel(String slug) {
+    switch (slug) {
+      case 'hanh-dong': return 'Hành Động';
+      case 'co-trang': return 'Cổ Trang';
+      case 'vien-tuong': return 'Viễn Tưởng';
+      case 'kinh-di': return 'Kinh Dị';
+      case 'tinh-cam': return 'Tình Cảm';
+      case 'hai-huoc': return 'Hài Hước';
+      case 'hoat-hinh': return 'Hoạt Hình';
+      case 'tam-ly': return 'Tâm Lý';
+      case 'vo-thuat': return 'Võ Thuật';
+      case 'phieu-luu': return 'Phiêu Lưu';
+      case 'than-thoai': return 'Thần Thoại';
+      case 'hoc-duong': return 'Học Đường';
+      case 'gia-dinh': return 'Gia Đình';
+      case 'tai-lieu': return 'Tài Liệu';
+      case 'bi-an': return 'Bí Ẩn';
+      default: return slug;
+    }
+  }
+
   String _getRegionLabel(String slug) {
     switch (slug) {
       case 'han-quoc': return 'Hàn Quốc';
@@ -127,6 +159,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                             SortFilterBottomSheet.show(context, onApply: (filters) {
                               ref.read(exploreFilterProvider.notifier).updateFilter(
                                 sort: filters['sort'],
+                                type: filters['type'],
                                 category: filters['category'],
                                 region: filters['region'],
                                 year: filters['year'],
@@ -169,6 +202,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               _buildActiveFilterChip('Sắp xếp: ${_getSortLabel(filter.sort)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(sort: 'latest');
                               }),
+                            if (filter.type != 'all')
+                              _buildActiveFilterChip('Loại: ${_getTypeLabel(filter.type)}', () {
+                                ref.read(exploreFilterProvider.notifier).updateFilter(type: 'all');
+                              }),
+                            if (filter.category != 'all')
+                              _buildActiveFilterChip('Thể loại: ${_getCategoryLabel(filter.category)}', () {
+                                ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
+                              }),
                             if (filter.region != 'all')
                               _buildActiveFilterChip('Khu vực: ${_getRegionLabel(filter.region)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(region: 'all');
@@ -176,10 +217,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                             if (filter.year != 'all')
                               _buildActiveFilterChip('Năm: ${filter.year}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(year: 'all');
-                              }),
-                            if (filter.category != 'all')
-                              _buildActiveFilterChip('Thể loại: ${filter.category}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
                               }),
                           ],
                         ),

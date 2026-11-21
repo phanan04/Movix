@@ -5,6 +5,7 @@ import '../../../../providers/movie_providers.dart';
 import '../../widgets/shimmer_loading.dart';
 import 'notification_screen.dart';
 import 'widgets/hero_banner.dart';
+import 'widgets/continue_watching_carousel.dart';
 import 'widgets/top_ten_carousel.dart';
 import 'widgets/movie_carousel.dart';
 
@@ -23,6 +24,7 @@ class HomeScreen extends ConsumerWidget {
     final seriesAsync = ref.watch(seriesMoviesProvider);
     final singleAsync = ref.watch(singleMoviesProvider);
     final animeAsync = ref.watch(animeMoviesProvider);
+    final tvShowsAsync = ref.watch(tvShowsMoviesProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -94,6 +96,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(seriesMoviesProvider);
           ref.invalidate(singleMoviesProvider);
           ref.invalidate(animeMoviesProvider);
+          ref.invalidate(tvShowsMoviesProvider);
         },
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -113,7 +116,14 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            const SliverToBoxAdapter(child: SizedBox(height: 18)),
+
+            // 1.5. Continue Watching (Tiếp tục xem - Netflix style)
+            const SliverToBoxAdapter(
+              child: ContinueWatchingCarousel(),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
             // 2. Top 10 Movies This Week
             SliverToBoxAdapter(
@@ -133,7 +143,7 @@ class HomeScreen extends ConsumerWidget {
             SliverToBoxAdapter(
               child: newUpdatesAsync.when(
                 data: (movies) => MovieCarouselSection(
-                  title: 'New Releases',
+                  title: 'Phim Mới Cập Nhật',
                   movies: movies.skip(1).toList(),
                   onSeeAll: onSearchTap,
                 ),
@@ -179,6 +189,21 @@ class HomeScreen extends ConsumerWidget {
               child: animeAsync.when(
                 data: (movies) => MovieCarouselSection(
                   title: 'Anime & Hoạt Hình',
+                  movies: movies,
+                  onSeeAll: onSearchTap,
+                ),
+                loading: () => const MovieCarouselSkeleton(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            // 7. TV Shows & Gameshows
+            SliverToBoxAdapter(
+              child: tvShowsAsync.when(
+                data: (movies) => MovieCarouselSection(
+                  title: 'TV Shows & Gameshow',
                   movies: movies,
                   onSeeAll: onSearchTap,
                 ),

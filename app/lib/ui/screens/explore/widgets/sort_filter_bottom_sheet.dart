@@ -24,9 +24,19 @@ class SortFilterBottomSheet extends StatefulWidget {
 
 class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
   String _selectedSort = 'latest';
+  String _selectedType = 'all';
   String _selectedCategory = 'all';
   String _selectedRegion = 'all';
   String _selectedYear = 'all';
+
+  final List<Map<String, String>> _types = [
+    {'name': 'Tất cả', 'slug': 'all'},
+    {'name': 'Phim Lẻ', 'slug': 'phim-le'},
+    {'name': 'Phim Bộ', 'slug': 'phim-bo'},
+    {'name': 'Phim Chiếu Rạp', 'slug': 'phim-chieu-rap'},
+    {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
+    {'name': 'TV Shows', 'slug': 'tv-shows'},
+  ];
 
   final List<Map<String, String>> _categories = [
     {'name': 'Tất cả', 'slug': 'all'},
@@ -37,6 +47,14 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
     {'name': 'Tình Cảm', 'slug': 'tinh-cam'},
     {'name': 'Hài Hước', 'slug': 'hai-huoc'},
     {'name': 'Hoạt Hình', 'slug': 'hoat-hinh'},
+    {'name': 'Tâm Lý', 'slug': 'tam-ly'},
+    {'name': 'Võ Thuật', 'slug': 'vo-thuat'},
+    {'name': 'Phiêu Lưu', 'slug': 'phieu-luu'},
+    {'name': 'Thần Thoại', 'slug': 'than-thoai'},
+    {'name': 'Học Đường', 'slug': 'hoc-duong'},
+    {'name': 'Gia Đình', 'slug': 'gia-dinh'},
+    {'name': 'Tài Liệu', 'slug': 'tai-lieu'},
+    {'name': 'Bí Ẩn', 'slug': 'bi-an'},
   ];
 
   final List<Map<String, String>> _regions = [
@@ -48,7 +66,18 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
     {'name': 'Nhật Bản', 'slug': 'nhat-ban'},
   ];
 
-  final List<String> _years = ['Tất cả', '2026', '2025', '2024', '2023', '2022', '2021'];
+  final List<String> _years = [
+    'Tất cả',
+    '2026',
+    '2025',
+    '2024',
+    '2023',
+    '2022',
+    '2021',
+    '2020',
+    '2019',
+    'Trước 2019',
+  ];
 
   final List<Map<String, String>> _sortOptions = [
     {'name': 'Mới cập nhật', 'id': 'latest'},
@@ -59,6 +88,7 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
   void _reset() {
     setState(() {
       _selectedSort = 'latest';
+      _selectedType = 'all';
       _selectedCategory = 'all';
       _selectedRegion = 'all';
       _selectedYear = 'all';
@@ -69,6 +99,7 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
     Navigator.pop(context);
     widget.onApply?.call({
       'sort': _selectedSort,
+      'type': _selectedType,
       'category': _selectedCategory,
       'region': _selectedRegion,
       'year': _selectedYear,
@@ -144,6 +175,20 @@ class _SortFilterBottomSheetState extends State<SortFilterBottomSheet> {
                     final isSel = _selectedSort == opt['id'];
                     return _buildChip(opt['name']!, isSel, () {
                       setState(() => _selectedSort = opt['id']!);
+                    });
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // 1.5. Movie Type (Định dạng / Loại phim)
+                _buildSectionTitle('Loại phim & Định dạng'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _types.map((type) {
+                    final isSel = _selectedType == type['slug'];
+                    return _buildChip(type['name']!, isSel, () {
+                      setState(() => _selectedType = type['slug']!);
                     });
                   }).toList(),
                 ),

@@ -36,14 +36,22 @@ final animeMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
   return api.getMoviesByType('hoat-hinh', page: 1, limit: 12);
 });
 
+// TV Shows / Gameshows
+final tvShowsMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return api.getMoviesByType('tv-shows', page: 1, limit: 12);
+});
+
 // Explore Filter State Model
 class ExploreFilterState {
+  final String type;     // 'all', 'phim-le', 'phim-bo', 'phim-chieu-rap', 'hoat-hinh', 'tv-shows'
   final String category; // 'all' or slug ('hanh-dong', 'co-trang', ...)
   final String region;   // 'all' or slug ('han-quoc', 'au-my', ...)
-  final String year;     // 'all' or year string ('2026', '2025', ...)
+  final String year;     // 'all' or year string ('2026', '2025', ..., 'truoc-2019')
   final String sort;     // 'latest', 'popular', 'rating'
 
   const ExploreFilterState({
+    this.type = 'all',
     this.category = 'all',
     this.region = 'all',
     this.year = 'all',
@@ -51,15 +59,17 @@ class ExploreFilterState {
   });
 
   bool get hasActiveFilter =>
-      category != 'all' || region != 'all' || year != 'all' || sort != 'latest';
+      type != 'all' || category != 'all' || region != 'all' || year != 'all' || sort != 'latest';
 
   ExploreFilterState copyWith({
+    String? type,
     String? category,
     String? region,
     String? year,
     String? sort,
   }) {
     return ExploreFilterState(
+      type: type ?? this.type,
       category: category ?? this.category,
       region: region ?? this.region,
       year: year ?? this.year,
@@ -72,8 +82,8 @@ class ExploreFilterNotifier extends Notifier<ExploreFilterState> {
   @override
   ExploreFilterState build() => const ExploreFilterState();
 
-  void updateFilter({String? category, String? region, String? year, String? sort}) {
-    state = state.copyWith(category: category, region: region, year: year, sort: sort);
+  void updateFilter({String? type, String? category, String? region, String? year, String? sort}) {
+    state = state.copyWith(type: type, category: category, region: region, year: year, sort: sort);
   }
 
   void resetFilter() {
@@ -92,7 +102,10 @@ final exploreMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
 
   List<MovieItem> movies = [];
 
-  if (filter.region != 'all') {
+  // Primary fetch based on user's strongest explicit filter
+  if (filter.type != 'all') {
+    movies = await api.getMoviesByType(filter.type, page: 1, limit: 36);
+  } else if (filter.region != 'all') {
     movies = await api.getMoviesByCountry(filter.region, page: 1, limit: 36);
   } else if (filter.category != 'all') {
     movies = await api.getMoviesByCategory(filter.category, page: 1, limit: 36);
@@ -104,11 +117,18 @@ final exploreMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
 
   // Secondary year filter
   if (filter.year != 'all') {
-    final targetYear = int.tryParse(filter.year);
-    if (targetYear != null) {
-      final filtered = movies.where((m) => m.year == targetYear).toList();
+    if (filter.year == 'truoc-2019' || filter.year == 'Trước 2019') {
+      final filtered = movies.where((m) => m.year > 0 && m.year < 2019).toList();
       if (filtered.isNotEmpty) {
         movies = filtered;
+      }
+    } else {
+      final targetYear = int.tryParse(filter.year);
+      if (targetYear != null) {
+        final filtered = movies.where((m) => m.year == targetYear).toList();
+        if (filtered.isNotEmpty) {
+          movies = filtered;
+        }
       }
     }
   }

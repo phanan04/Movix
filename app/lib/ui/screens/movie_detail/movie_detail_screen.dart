@@ -470,11 +470,11 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF0F1014),
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Hero Backdrop tràn viền toàn màn hình
+            // 1. Hero Backdrop tràn viền toàn màn hình (Dưới cùng)
             Positioned.fill(
               child: CachedPosterImage(
                 imageUrl: movie.fullThumbUrl.isNotEmpty ? movie.fullThumbUrl : movie.fullPosterUrl,
@@ -484,32 +484,54 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               ),
             ),
 
-            // 2. Lớp LinearGradient ngang: 0.92 mép trái, 0.75 tại 0.38, và trong suốt hoàn toàn từ 0.55 sang hết mép phải
+            // 2. Lớp LinearGradient ngang (Màu nền tối #0F1014: 95% mép trái, 85% vùng chữ, 40% ở giữa, trong suốt mép phải)
             Positioned.fill(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                decoration: BoxDecoration(
-                  color: _viewMode == DetailViewMode.overview
-                      ? Colors.transparent
-                      : Colors.black.withValues(alpha: 0.88),
-                  gradient: _viewMode == DetailViewMode.overview
-                      ? const LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            Color(0xEB000000), // 0.92 tại 0.0
-                            Color(0xBF000000), // 0.75 tại 0.38
-                            Colors.transparent, // Trong suốt tại 0.55
-                            Colors.transparent, // Trong suốt tại 1.0
-                          ],
-                          stops: [0.0, 0.38, 0.55, 1.0],
-                        )
-                      : null,
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    color: _viewMode == DetailViewMode.overview
+                        ? Colors.transparent
+                        : const Color(0xFF0F1014).withValues(alpha: 0.90),
+                    gradient: _viewMode == DetailViewMode.overview
+                        ? const LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              Color(0xF20F1014),
+                              Color(0xD90F1014),
+                              Color(0x660F1014),
+                              Colors.transparent,
+                            ],
+                            stops: [0.0, 0.42, 0.65, 1.0],
+                          )
+                        : null,
+                  ),
                 ),
               ),
             ),
 
-            // 3. Bố cục không chồng chéo: Gom thanh điều hướng và nội dung vào Column chuẩn
+            // 3. Lớp LinearGradient dọc mờ nhẹ từ đáy lên (Alignment.bottomCenter lên Alignment.topCenter)
+            if (_viewMode == DetailViewMode.overview)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Color(0xE60F1014),
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.35],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // 4. Lớp chứa nội dung chữ và nút bấm (Nằm trên cùng)
             SafeArea(
               child: Column(
                 children: [

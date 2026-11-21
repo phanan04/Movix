@@ -35,6 +35,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   bool _isDescriptionExpanded = false;
   DetailViewMode _viewMode = DetailViewMode.overview;
   int _focusedMenuIndex = 0;
+  int _focusedEpisodeIndex = 0;
   bool _isLiked = false;
 
   @override
@@ -729,220 +730,456 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         ? 'Tiếp tục ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
         : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim');
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 48, top: 0, bottom: 12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: width * 0.46,
-                maxHeight: constraints.maxHeight,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: width * 0.46,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+    final overviewLeft = LayoutBuilder(
+      builder: (context, constraints) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: constraints.maxHeight,
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: width * (isSingleEpisodeMovie ? 0.46 : 0.44),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Tên phim chính cỡ lớn đậm nét đặc trưng kèm đổ bóng 2 tầng chống nền sáng
+                  Text(
+                    mainTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
+                      height: 1.1,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
+                        Shadow(color: Colors.black87, blurRadius: 16),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // 3. Dòng metadata 1: 2025  •  Comedy  •  6 Episodes  •  HD  •  [CC]
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // Tên phim chính cỡ lớn đậm nét đặc trưng kèm đổ bóng 2 tầng chống nền sáng
-                      Text(
-                        mainTitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -0.5,
-                          height: 1.1,
-                          shadows: [
-                            Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
-                            Shadow(color: Colors.black87, blurRadius: 16),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // 3. Dòng metadata 1: 2025  •  Comedy  •  6 Episodes  •  HD  •  [CC]
-                      Wrap(
-                        spacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (movie.year > 0)
-                            Text(
-                              '${movie.year}',
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                          if (movie.categories.isNotEmpty) ...[
-                            const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
-                            Text(
-                              movie.categories.first.name,
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                          if (movie.episodeCurrent.isNotEmpty) ...[
-                            const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
-                            Text(
-                              movie.episodeCurrent,
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white60, width: 0.8),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              movie.quality.isNotEmpty ? movie.quality : 'HD',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white60, width: 0.8),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: const Icon(Icons.closed_caption_rounded, color: Colors.white, size: 13),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // 4. Dòng metadata 2: [16+]  Vietsub
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white38, width: 0.8),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: const Text(
-                              '16+',
-                              style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            movie.lang.isNotEmpty ? movie.lang : 'Vietsub',
-                            style: const TextStyle(color: Color(0xFFB3B3B3), fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-
-                      // 5. Tóm tắt nội dung giới hạn tối đa 3 dòng
-                      Text(
-                        movie.content.isNotEmpty ? _cleanContent(movie.content) : 'Chưa có tóm tắt cho phim này.',
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFFE0E0E0),
-                          height: 1.4,
-                          shadows: [
-                            Shadow(color: Colors.black87, blurRadius: 8),
-                          ],
-                        ),
-                      ),
-
-                      // 6. Dòng Diễn viên (Cast)
-                      if (movie.actors.isNotEmpty) ...[
-                        const SizedBox(height: 6),
+                      if (movie.year > 0)
                         Text(
-                          'Cast: ${movie.actors.take(4).join(", ")}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)),
+                          '${movie.year}',
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      if (movie.categories.isNotEmpty) ...[
+                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        Text(
+                          movie.categories.first.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                       ],
-                      const SizedBox(height: 14),
-
-                      // 7. Cụm 3 nút tròn hành động (Bookmark / Like / Share) ngồi thành 1 hàng ngang
-                      Row(
-                        children: [
-                          ValueListenableBuilder<List<MovieItem>>(
-                            valueListenable: _userStorage.myListNotifier,
-                            builder: (context, _, __) {
-                              final inList = _userStorage.isInMyList(movie.slug);
-                              return _buildCircleActionButton(
-                                icon: inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                                color: inList ? const Color(0xFFE50914) : Colors.white,
-                                onTap: () => _userStorage.toggleMyList(movieItem),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 14),
-                          _buildCircleActionButton(
-                            icon: _isLiked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
-                            color: _isLiked ? const Color(0xFFE50914) : Colors.white,
-                            onTap: () => setState(() => _isLiked = !_isLiked),
-                          ),
-                          const SizedBox(width: 14),
-                          _buildCircleActionButton(
-                            icon: Icons.share_outlined,
-                            color: Colors.white,
-                            onTap: () => AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // 8. Cụm menu dọc chuẩn Netflix
-                      _buildActionMenuItem(
-                        index: 0,
-                        icon: Icons.play_arrow_rounded,
-                        label: playLabel,
-                        autoFocus: true,
-                        onTap: () {
-                          if (episodes.isNotEmpty && resumeEp != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => PlayerScreen(
-                                  movie: movie,
-                                  episode: resumeEp,
-                                  allEpisodes: episodes,
-                                  initialPositionSeconds: progress?.positionSeconds ?? 0,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      if (!isSingleEpisodeMovie)
-                        _buildActionMenuItem(
-                          index: 1,
-                          icon: Icons.filter_none_rounded,
-                          label: 'Danh sách tập',
-                          onTap: () => setState(() => _viewMode = DetailViewMode.episodes),
+                      if (movie.episodeCurrent.isNotEmpty) ...[
+                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        Text(
+                          movie.episodeCurrent,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                         ),
-                      _buildActionMenuItem(
-                        index: isSingleEpisodeMovie ? 1 : 2,
-                        icon: Icons.grid_view_rounded,
-                        label: 'Phim tương tự',
-                        onTap: () => setState(() => _viewMode = DetailViewMode.similar),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white60, width: 0.8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          movie.quality.isNotEmpty ? movie.quality : 'HD',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
                       ),
-                      _buildActionMenuItem(
-                        index: isSingleEpisodeMovie ? 2 : 3,
-                        icon: Icons.chat_bubble_outline_rounded,
-                        label: 'Bình luận',
-                        onTap: () => _showCommentsModal(context, movie.slug),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white60, width: 0.8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Icon(Icons.closed_caption_rounded, color: Colors.white, size: 13),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 6),
+
+                  // 4. Dòng metadata 2: [16+]  Vietsub
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white38, width: 0.8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text(
+                          '16+',
+                          style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        movie.lang.isNotEmpty ? movie.lang : 'Vietsub',
+                        style: const TextStyle(color: Color(0xFFB3B3B3), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 5. Tóm tắt nội dung giới hạn tối đa 3 dòng
+                  Text(
+                    movie.content.isNotEmpty ? _cleanContent(movie.content) : 'Chưa có tóm tắt cho phim này.',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFE0E0E0),
+                      height: 1.4,
+                      shadows: [
+                        Shadow(color: Colors.black87, blurRadius: 8),
+                      ],
+                    ),
+                  ),
+
+                  // 6. Dòng Diễn viên (Cast)
+                  if (movie.actors.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Cast: ${movie.actors.take(4).join(", ")}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+
+                  // 7. Cụm 3 nút tròn hành động (Bookmark / Like / Share) ngồi thành 1 hàng ngang
+                  Row(
+                    children: [
+                      ValueListenableBuilder<List<MovieItem>>(
+                        valueListenable: _userStorage.myListNotifier,
+                        builder: (context, _, __) {
+                          final inList = _userStorage.isInMyList(movie.slug);
+                          return _buildCircleActionButton(
+                            icon: inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                            color: inList ? const Color(0xFFE50914) : Colors.white,
+                            onTap: () => _userStorage.toggleMyList(movieItem),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 14),
+                      _buildCircleActionButton(
+                        icon: _isLiked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
+                        color: _isLiked ? const Color(0xFFE50914) : Colors.white,
+                        onTap: () => setState(() => _isLiked = !_isLiked),
+                      ),
+                      const SizedBox(width: 14),
+                      _buildCircleActionButton(
+                        icon: Icons.share_outlined,
+                        color: Colors.white,
+                        onTap: () => AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 8. Cụm menu dọc chuẩn Netflix
+                  _buildActionMenuItem(
+                    index: 0,
+                    icon: Icons.play_arrow_rounded,
+                    label: playLabel,
+                    autoFocus: true,
+                    onTap: () {
+                      if (episodes.isNotEmpty && resumeEp != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PlayerScreen(
+                              movie: movie,
+                              episode: resumeEp,
+                              allEpisodes: episodes,
+                              initialPositionSeconds: progress?.positionSeconds ?? 0,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  if (!isSingleEpisodeMovie)
+                    _buildActionMenuItem(
+                      index: 1,
+                      icon: Icons.filter_none_rounded,
+                      label: 'Danh sách tập',
+                      onTap: () => setState(() => _viewMode = DetailViewMode.episodes),
+                    ),
+                  _buildActionMenuItem(
+                    index: isSingleEpisodeMovie ? 1 : 2,
+                    icon: Icons.grid_view_rounded,
+                    label: 'Phim tương tự',
+                    onTap: () => setState(() => _viewMode = DetailViewMode.similar),
+                  ),
+                  _buildActionMenuItem(
+                    index: isSingleEpisodeMovie ? 2 : 3,
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: 'Bình luận',
+                    onTap: () => _showCommentsModal(context, movie.slug),
+                  ),
+                ],
               ),
-            );
-          },
+            ),
+          ),
+        );
+      },
+    );
+
+    // Nếu phim chỉ có 1 tập: không hiển thị danh sách tập bên phải (giữ nền ảnh backdrop thoáng đãng)
+    if (isSingleEpisodeMovie) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 48, top: 0, bottom: 12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width * 0.46),
+            child: overviewLeft,
+          ),
         ),
+      );
+    }
+
+    // Nếu phim có nhiều tập: chia 2 cột (Trái: Thông tin phim, Phải: Danh sách tập thumbnail chuẩn Netflix)
+    return Padding(
+      padding: const EdgeInsets.only(left: 48, top: 0, bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Bên trái: Thông tin phim & cụm menu hành động
+          Expanded(
+            flex: 44,
+            child: overviewLeft,
+          ),
+
+          const SizedBox(width: 16),
+
+          // Bên phải: Danh sách tập phim chuẩn Netflix (chỉ hiện khi phim có nhiều tập)
+          Expanded(
+            flex: 56,
+            child: _buildNetflixEpisodeList(movie, episodes, progress),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Danh sách tập bên phải chuẩn Netflix TV (16:9 thumbnail, badge Episode X, tiêu đề, tóm tắt, thời lượng)
+  Widget _buildNetflixEpisodeList(
+    MovieDetail movie,
+    List<EpisodeItem> episodes,
+    WatchProgress? progress,
+  ) {
+    if (episodes.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            const Color(0xFF0F1014).withValues(alpha: 0.75),
+            const Color(0xFF0F1014).withValues(alpha: 0.90),
+          ],
+          stops: const [0.0, 0.15, 1.0],
+        ),
+      ),
+      child: ListView.separated(
+        padding: const EdgeInsets.only(top: 4, bottom: 20, left: 24, right: 36),
+        physics: const BouncingScrollPhysics(),
+        itemCount: episodes.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 18),
+        itemBuilder: (context, idx) {
+          final ep = episodes[idx];
+          final isPlayingThis = progress != null && progress.episodeSlug == ep.slug;
+          final epNum = ep.name.replaceAll(RegExp(r'[^0-9]'), '');
+          final epBadge = epNum.isNotEmpty ? 'Episode $epNum' : ep.name;
+          final epTitle = ep.filename.isNotEmpty && ep.filename != ep.name
+              ? ep.filename
+              : (ep.name.startsWith('Tập') ? ep.name : 'Tập ${ep.name}');
+          final epDesc = movie.content.isNotEmpty
+              ? _cleanContent(movie.content)
+              : 'Thưởng thức tập ${ep.name} với chất lượng cao và tốc độ mượt mà.';
+          final durationText = '(${movie.time.isNotEmpty ? movie.time : "45m"})';
+          final isFocused = _focusedEpisodeIndex == idx;
+
+          return MouseRegion(
+            onEnter: (_) {
+              if (_focusedEpisodeIndex != idx) {
+                setState(() => _focusedEpisodeIndex = idx);
+              }
+            },
+            child: TVFocusable(
+              showBorder: false,
+              scale: 1.01,
+              onFocusChange: (focused) {
+                if (focused && _focusedEpisodeIndex != idx) {
+                  setState(() => _focusedEpisodeIndex = idx);
+                }
+              },
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PlayerScreen(
+                      movie: movie,
+                      episode: ep,
+                      allEpisodes: episodes,
+                      initialPositionSeconds: isPlayingThis ? progress.positionSeconds : 0,
+                    ),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Thumbnail 16:9 với badge "Episode X" ở góc trái dưới
+                  Container(
+                    width: 175,
+                    height: 98,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isFocused ? Colors.white : Colors.transparent,
+                        width: 2.2,
+                      ),
+                      boxShadow: isFocused
+                          ? [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.35),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedPosterImage(
+                            imageUrl: movie.fullThumbUrl.isNotEmpty
+                                ? movie.fullThumbUrl
+                                : movie.fullPosterUrl,
+                            fit: BoxFit.cover,
+                          ),
+                          Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Color(0xB3000000),
+                                ],
+                                stops: [0.4, 1.0],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 8,
+                            bottom: 6,
+                            child: Text(
+                              epBadge,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(color: Colors.black, blurRadius: 4),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (isPlayingThis)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE50914),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'ĐANG XEM',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // 2. Thông tin tập: Tiêu đề, tóm tắt 2 dòng, thời lượng
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 2),
+                        Text(
+                          epTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isFocused ? Colors.white : const Color(0xFFF0F0F0),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          epDesc,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB3B3B3),
+                            height: 1.35,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          durationText,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF808080),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

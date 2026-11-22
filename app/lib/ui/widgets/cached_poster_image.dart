@@ -9,6 +9,7 @@ class CachedPosterImage extends StatelessWidget {
   final double? width;
   final double? height;
   final BoxFit fit;
+  final Alignment alignment;
   final BorderRadius? borderRadius;
   final int memCacheWidth;
   final int memCacheHeight;
@@ -19,6 +20,7 @@ class CachedPosterImage extends StatelessWidget {
     this.width,
     this.height,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.borderRadius,
     this.memCacheWidth = 320,
     this.memCacheHeight = 480,
@@ -48,6 +50,7 @@ class CachedPosterImage extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        alignment: alignment,
         memCacheWidth: memCacheWidth,
         memCacheHeight: memCacheHeight,
         fadeInDuration: const Duration(milliseconds: 200),

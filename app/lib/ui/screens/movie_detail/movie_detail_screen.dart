@@ -566,8 +566,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               child: ImageFiltered(
                 imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
                 child: CachedPosterImage(
-                  imageUrl: movie.fullThumbUrl.isNotEmpty ? movie.fullThumbUrl : movie.fullPosterUrl,
+                  imageUrl: movie.fullPosterUrl,
                   fit: BoxFit.cover,
+                  alignment: Alignment.centerRight,
                   width: double.infinity,
                   height: double.infinity,
                 ),
@@ -1318,10 +1319,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     fit: StackFit.expand,
                     children: [
                       CachedPosterImage(
-                        imageUrl: movie.fullThumbUrl.isNotEmpty
-                            ? movie.fullThumbUrl
-                            : movie.fullPosterUrl,
+                        imageUrl: movie.fullPosterUrl,
                         fit: BoxFit.cover,
+                        alignment: Alignment.center,
                       ),
                       Container(
                         decoration: const BoxDecoration(

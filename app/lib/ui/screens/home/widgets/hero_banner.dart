@@ -45,12 +45,13 @@ class _HeroBannerState extends State<HeroBanner> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Background Image: Dùng ảnh ngang (thumbUrl) cho màn hình rộng/TV, poster dọc cho mobile
+            // 1. Background Image: Dùng ảnh ngang 16:9 (posterUrl) cho màn hình rộng/TV/Landscape, poster dọc (thumbUrl) cho mobile dọc
             CachedPosterImage(
-              imageUrl: (isWide && movie.fullThumbUrl.isNotEmpty)
-                  ? movie.fullThumbUrl
-                  : movie.fullPosterUrl,
+              imageUrl: isWide
+                  ? movie.fullPosterUrl
+                  : (movie.fullThumbUrl.isNotEmpty ? movie.fullThumbUrl : movie.fullPosterUrl),
               fit: BoxFit.cover,
+              alignment: isWide ? Alignment.centerRight : Alignment.topCenter,
               memCacheWidth: 1280,
               memCacheHeight: 720,
             ),

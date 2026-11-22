@@ -6,7 +6,6 @@ import 'package:video_player/video_player.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../widgets/episode_grid_widget.dart';
 import 'web_player_controller.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -80,6 +79,15 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     _currentPosition = widget.initialPositionSeconds.toDouble();
     _webPlayerId = 'movix_player_${_currentEpisode.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
     _startPlaying();
+
+    // Netflix logic: Chuyển ngay sang màn hình ngang toàn màn hình (Landscape Immersive) trên thiết bị di động
+    if (!kIsWeb) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
 
     // Auto calculate initial episode chunk for the drawer
     const chunkSize = 20;
@@ -699,22 +707,21 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     _rightRippleTimer?.cancel();
     _nativeController?.dispose();
     _focusNode.dispose();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!kIsWeb) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final isTabletLandscape = width >= 720;
 
     final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
-    final hasPrev = curIdx > 0;
     final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
     final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
 
-    final isSeries = widget.allEpisodes.length > 1;
     final showNextEpPrompt = _totalDuration > 60 && (_totalDuration - _currentPosition) <= 90 && hasNext && _autoPlayNext;
 
     final videoPlayerWidget = KeyedSubtree(
@@ -921,49 +928,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       ),
     );
 
-    final controlsBar = isSeries
-        ? Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: const BoxDecoration(
-              color: Color(0xFF16181F),
-              border: Border(
-                top: BorderSide(color: AppColors.border, width: 0.5),
-                bottom: BorderSide(color: AppColors.border, width: 0.5),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton.icon(
-                  onPressed: hasPrev ? _playPrevEpisode : null,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: hasPrev ? Colors.white : AppColors.textMuted,
-                  ),
-                  icon: const Icon(Icons.skip_previous_rounded, size: 18),
-                  label: const Text('Tập trước', style: TextStyle(fontSize: 12.5), maxLines: 1),
-                ),
-                TextButton.icon(
-                  onPressed: hasNext ? _playNextEpisode : null,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: hasNext ? Colors.white : AppColors.textMuted,
-                  ),
-                  icon: const Icon(Icons.skip_next_rounded, size: 18),
-                  label: const Text('Tập tiếp', style: TextStyle(fontSize: 12.5), maxLines: 1),
-                ),
-              ],
-            ),
-          )
-        : const SizedBox.shrink();
-
     // Single Unified Scaffold with Keyboard Listener for shortcuts:
-    // N: Next episode, P: Prev episode, Space: Play/Pause, ArrowLeft/Right: Seek 10s, F: Fullscreen, M: Mute
+    // N: Next episode, P: Prev episode, Space: Play/Pause, ArrowLeft/Right: Seek 10s, M: Mute
     return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
@@ -987,56 +953,21 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
         }
       },
       child: Scaffold(
-      key: const ValueKey('unified_player_scaffold'),
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        top: !_isFullScreen && !isTabletLandscape,
-        bottom: !_isFullScreen && !isTabletLandscape,
-        left: false,
-        right: false,
-        child: isTabletLandscape || _isFullScreen
-            ? Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 100% Immersive Full-screen Video Player
-                  Center(child: videoPlayerWidget),
+        key: const ValueKey('unified_player_scaffold'),
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 100% Immersive Full-screen Video Player (Chuẩn Netflix)
+            Center(child: videoPlayerWidget),
 
-                  // Slide-in Episode Drawer on demand (for series)
-                  if (_showEpisodeDrawer && widget.allEpisodes.length > 1)
-                    _buildEpisodeDrawer(),
-                ],
-              )
-            : Column(
-                children: [
-                  // Mobile Portrait: Video Player 16:9 on top
-                  videoPlayerWidget,
-                  controlsBar,
-
-                  // Episodes list & information below
-                  Expanded(
-                    child: Container(
-                      color: AppColors.background,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                        physics: const BouncingScrollPhysics(),
-                        children: [
-                          if (widget.allEpisodes.length > 1)
-                            EpisodeGridWidget(
-                              episodes: widget.allEpisodes,
-                              currentEpisodeSlug: _currentEpisode.slug,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              onEpisodeSelected: (ep) => _switchEpisode(ep),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            // Slide-in Episode Drawer on demand (for series)
+            if (_showEpisodeDrawer && widget.allEpisodes.length > 1)
+              _buildEpisodeDrawer(),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   // Slide-in Episode Drawer on demand for TV / Tablet Landscape
@@ -1500,8 +1431,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
           // 5. Floating Skip Intro Button (Netflix Style: directly above progress bar on the right)
           if (!_isLocked && widget.allEpisodes.length > 1 && _enableSkipIntro && _currentPosition <= 120)
             Positioned(
-              bottom: 56,
-              right: 16,
+              bottom: 84,
+              right: 20,
               child: InkWell(
                 onTap: _skipIntro,
                 borderRadius: BorderRadius.circular(20),
@@ -1533,7 +1464,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
               ),
             ),
 
-          // 6. Bottom Bar: Scrubber + Time + Drawer + Quality + Aspect Ratio + Speed + Fullscreen
+          // 6. Bottom Bar: Scrubber + Time + Drawer + Quality + Aspect Ratio + Speed (Chuẩn Netflix)
           if (!_isLocked)
             Positioned(
               bottom: 0,
@@ -1576,150 +1507,157 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                         ),
                       ),
 
-                      // Bottom actions row
-                      Row(
-                        children: [
-                          Text(
-                            '${_formatDuration(_currentPosition)} / ${_formatDuration(_totalDuration)}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                            ),
-                          ),
-                          const Spacer(),
+                      // Bottom actions row: Responsive theo chiều rộng màn hình
+                      Builder(builder: (context) {
+                        final screenWidth = MediaQuery.of(context).size.width;
+                        final isCompact = screenWidth < 650;
 
-                          // Volume / Mute button
-                          IconButton(
-                            iconSize: 20,
-                            padding: const EdgeInsets.symmetric(horizontal: 3),
-                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            icon: Icon(
-                              _isMuted || _volume == 0
-                                  ? Icons.volume_off_rounded
-                                  : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                              color: Colors.white,
+                        return Row(
+                          children: [
+                            Text(
+                              '${_formatDuration(_currentPosition)} / ${_formatDuration(_totalDuration)}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                              ),
                             ),
-                            tooltip: 'Chỉnh âm lượng',
-                            onPressed: _toggleMute,
-                          ),
-                          const SizedBox(width: 4),
+                            const Spacer(),
 
-                          // Next Episode Quick Button (Bottom Bar Shortcut)
-                          if (hasNext) ...[
+                            // Volume / Mute button (chỉ hiện khi đủ chỗ trên màn ngang)
+                            if (!isCompact) ...[
+                              IconButton(
+                                iconSize: 20,
+                                padding: const EdgeInsets.symmetric(horizontal: 3),
+                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                icon: Icon(
+                                  _isMuted || _volume == 0
+                                      ? Icons.volume_off_rounded
+                                      : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                                  color: Colors.white,
+                                ),
+                                tooltip: 'Chỉnh âm lượng',
+                                onPressed: _toggleMute,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+
+                            // Next Episode Quick Button (Bottom Bar Shortcut)
+                            if (hasNext) ...[
+                              IconButton(
+                                iconSize: 22,
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                                tooltip: 'Tập tiếp: ${nextEp!.name} (Phím N)',
+                                onPressed: _playNextEpisode,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+
+                            // Series Episodes Drawer Toggle Button (Only for multi-episode series)
+                            if (widget.allEpisodes.length > 1) ...[
+                              InkWell(
+                                onTap: _toggleEpisodeDrawer,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: _showEpisodeDrawer
+                                        ? const Color(0xFFE50914)
+                                        : Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.video_library_rounded, color: Colors.white, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Tập (${widget.allEpisodes.length})',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+
+                            // Trên màn hình rộng: hiển thị các nút tắt tiện lợi (1080p, 16:9, Tốc độ)
+                            if (!isCompact) ...[
+                              // Quality badge button
+                              InkWell(
+                                onTap: _cycleQuality,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _selectedQuality == 'Tự động' ? 'Auto' : _selectedQuality.split(' ').first,
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+
+                              // Aspect ratio toggle button (Fit vs Zoom)
+                              InkWell(
+                                onTap: _toggleAspectRatio,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _isZoomFit ? 'Zoom' : '16:9',
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+
+                              // Speed badge button
+                              InkWell(
+                                onTap: _cycleSpeed,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${_currentSpeed}x',
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+
+                            // Nút cài đặt (chất lượng, tỷ lệ, âm thanh...): trên màn hẹp gom hết vào đây
                             IconButton(
-                              iconSize: 22,
+                              iconSize: 20,
                               padding: const EdgeInsets.symmetric(horizontal: 2),
                               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                              icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
-                              tooltip: 'Tập tiếp: ${nextEp!.name} (Phím N)',
-                              onPressed: _playNextEpisode,
+                              icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                              tooltip: 'Cài đặt phát & Chất lượng',
+                              onPressed: _showAudioSettingsSheet,
                             ),
-                            const SizedBox(width: 4),
                           ],
-
-                          // Series Episodes Drawer Toggle Button (Only for multi-episode series)
-                          if (widget.allEpisodes.length > 1) ...[
-                            InkWell(
-                              onTap: _toggleEpisodeDrawer,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _showEpisodeDrawer
-                                      ? const Color(0xFFE50914)
-                                      : Colors.white.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.video_library_rounded, color: Colors.white, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Tập (${widget.allEpisodes.length})',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-
-                          // Quality badge button
-                          InkWell(
-                            onTap: _cycleQuality,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                _selectedQuality == 'Tự động' ? 'Auto' : _selectedQuality.split(' ').first,
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-
-                          // Aspect ratio toggle button (Fit vs Zoom)
-                          InkWell(
-                            onTap: _toggleAspectRatio,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                _isZoomFit ? 'Zoom' : '16:9',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-
-                          // Speed badge button
-                          InkWell(
-                            onTap: _cycleSpeed,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${_currentSpeed}x',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-
-                          // Prominent Fullscreen Button
-                          IconButton(
-                            iconSize: 24,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            icon: Icon(
-                              _isFullScreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-                              color: Colors.white,
-                            ),
-                            tooltip: _isFullScreen ? 'Thu nhỏ' : 'Toàn màn hình',
-                            onPressed: _toggleFullScreen,
-                          ),
-                        ],
-                      ),
+                        );
+                      }),
                     ],
                   ),
                 ),

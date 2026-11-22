@@ -39,6 +39,35 @@ jobs:
           mkdir -p app/android
           echo "flutter.sdk=$FLUTTER_ROOT" > app/android/local.properties
 
+      - name: Configure Android Signing & Keystore
+        run: |
+          mkdir -p app/android/app/keystore
+          # Kiểm tra nếu keystore movix.jks chưa có alias movix thì tự động tạo chuẩn bằng keytool
+          if [ ! -f app/android/app/keystore/movix.jks ] || ! keytool -list -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix > /dev/null 2>&1; then
+            echo "Generating valid release keystore with alias movix..."
+            rm -f app/android/app/keystore/movix.jks
+            keytool -genkeypair -v \
+              -keystore app/android/app/keystore/movix.jks \
+              -storepass movix123456 \
+              -alias movix \
+              -keypass movix123456 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Movix, OU=TwoPhim, O=Movix, C=VN" \
+              -storetype PKCS12
+          fi
+          echo "Verifying keystore contents:"
+          keytool -list -v -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix
+
+          # Tạo file key.properties chuẩn
+          cat << 'EOF' > app/android/key.properties
+          storePassword=movix123456
+          keyPassword=movix123456
+          keyAlias=movix
+          storeFile=keystore/movix.jks
+          EOF
+
       - name: Get Dependencies
         working-directory: app
         run: flutter pub get

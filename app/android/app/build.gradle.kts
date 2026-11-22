@@ -25,21 +25,29 @@ android {
         versionName = flutter.versionName
     }
 
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    val keystoreProperties = java.util.Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+    }
+
     signingConfigs {
         create("release") {
-            val keystoreFile = file("keystore/movix.jks")
+            val keystorePath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
+            val keystoreFile = file(keystorePath)
             if (keystoreFile.exists()) {
-                keyAlias = "movix"
-                keyPassword = "movix123456"
+                keyAlias = keystoreProperties.getProperty("keyAlias") ?: "movix"
+                keyPassword = keystoreProperties.getProperty("keyPassword") ?: "movix123456"
                 storeFile = keystoreFile
-                storePassword = "movix123456"
+                storePassword = keystoreProperties.getProperty("storePassword") ?: "movix123456"
             }
         }
     }
 
     buildTypes {
         release {
-            val keystoreFile = file("keystore/movix.jks")
+            val keystorePath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
+            val keystoreFile = file(keystorePath)
             if (keystoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             } else {

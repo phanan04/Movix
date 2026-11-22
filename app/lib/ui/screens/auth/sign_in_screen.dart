@@ -7,18 +7,32 @@ import 'forgot_password/forgot_password_methods_screen.dart';
 import 'google_auth_service.dart';
 
 class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+  final String? initialEmail;
+  final String? initialPassword;
+
+  const SignInScreen({
+    super.key,
+    this.initialEmail,
+    this.initialPassword,
+  });
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _passwordController = TextEditingController(text: widget.initialPassword ?? '');
+  }
 
   @override
   void dispose() {
@@ -64,11 +78,29 @@ class _SignInScreenState extends State<SignInScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errText = e.toString();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(errText),
             backgroundColor: AppColors.primary,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
+            action: errText.contains('chưa tồn tại')
+                ? SnackBarAction(
+                    label: 'Đăng ký ngay',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SignUpScreen(
+                            initialEmail: email,
+                            initialPassword: password,
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : null,
           ),
         );
       }
@@ -278,7 +310,12 @@ class _SignInScreenState extends State<SignInScreen> {
                     onTap: () {
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => SignUpScreen(
+                            initialEmail: _emailController.text.trim(),
+                            initialPassword: _passwordController.text,
+                          ),
+                        ),
                       );
                     },
                     child: const Text(
@@ -293,6 +330,28 @@ class _SignInScreenState extends State<SignInScreen> {
                 ],
               ),
               const SizedBox(height: 20),
+
+              // Guest VIP option
+              Center(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await UserStorage().loginAsGuest();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MainScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.rocket_launch_rounded, color: AppColors.textMuted, size: 16),
+                  label: const Text(
+                    'Bỏ qua đăng nhập • Trải nghiệm ngay (Khách VIP)',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         ),

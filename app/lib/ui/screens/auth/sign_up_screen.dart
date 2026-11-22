@@ -1,24 +1,40 @@
 import 'package:flutter/material.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/theme/app_colors.dart';
+import '../main_screen.dart';
 import 'choose_interest_screen.dart';
 import 'google_auth_service.dart';
 import 'sign_in_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  final String? initialEmail;
+  final String? initialPassword;
+
+  const SignUpScreen({
+    super.key,
+    this.initialEmail,
+    this.initialPassword,
+  });
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _passwordController = TextEditingController(text: widget.initialPassword ?? '');
+  }
 
   @override
   void dispose() {
@@ -296,7 +312,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     onTap: () {
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => const SignInScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => SignInScreen(
+                            initialEmail: _emailController.text.trim(),
+                            initialPassword: _passwordController.text,
+                          ),
+                        ),
                       );
                     },
                     child: const Text(
@@ -311,6 +332,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ],
               ),
               const SizedBox(height: 20),
+
+              // Guest VIP option
+              Center(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await UserStorage().loginAsGuest();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MainScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.rocket_launch_rounded, color: AppColors.textMuted, size: 16),
+                  label: const Text(
+                    'Bỏ qua đăng ký • Trải nghiệm ngay (Khách VIP)',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         ),

@@ -159,6 +159,11 @@ class UserStorage {
     _loadComments();
   }
 
+  Future<SharedPreferences> _ensurePrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   // --- SCOPED STORAGE KEYS (Data Isolation per User) ---
   String _getMyListKey() {
     final user = currentUserNotifier.value;
@@ -201,7 +206,8 @@ class UserStorage {
   }
 
   Future<void> _saveRegisteredAccounts(Map<String, dynamic> accounts) async {
-    await _prefs?.setString('app_registered_accounts', jsonEncode(accounts));
+    final p = await _ensurePrefs();
+    await p.setString('app_registered_accounts', jsonEncode(accounts));
   }
 
   // --- AUTHENTICATION & REGISTRATION ---
@@ -218,9 +224,25 @@ class UserStorage {
   }
 
   Future<void> _setActiveUser(UserModel user) async {
+    final p = await _ensurePrefs();
     currentUserNotifier.value = user;
-    await _prefs?.setString('user_profile', jsonEncode(user.toJson()));
+    await p.setString('user_profile', jsonEncode(user.toJson()));
     _switchUserDataContext(user);
+  }
+
+  /// Guest VIP Login (Trải nghiệm ngay không cần tài khoản)
+  Future<UserModel> loginAsGuest() async {
+    await _ensurePrefs();
+    final guestUser = UserModel(
+      id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
+      name: 'Khách VIP',
+      email: '',
+      avatarUrl: '',
+      authProvider: 'guest',
+      isVip: true,
+    );
+    await _setActiveUser(guestUser);
+    return guestUser;
   }
 
   /// Real Account Registration with Password and Email Validation
@@ -229,8 +251,11 @@ class UserStorage {
     required String email,
     required String password,
   }) async {
+    await _ensurePrefs();
     final trimmedEmail = email.trim().toLowerCase();
-    final trimmedName = name.trim();
+    final trimmedName = name.trim().isEmpty
+        ? (trimmedEmail.contains('@') ? trimmedEmail.split('@')[0] : 'Thành viên Movix')
+        : name.trim();
 
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(trimmedEmail)) {
       throw 'Định dạng email không hợp lệ. Vui lòng nhập đúng email (VD: abc@gmail.com)';
@@ -238,13 +263,31 @@ class UserStorage {
     if (password.length < 6) {
       throw 'Mật khẩu phải có độ dài tối thiểu 6 ký tự!';
     }
-    if (trimmedName.isEmpty) {
-      throw 'Vui lòng nhập tên người dùng!';
+
+    // 1. Kiểm tra tài khoản đã tồn tại trong danh mục tài khoản
+    final accounts = _getRegisteredAccounts();
+    if (accounts.containsKey(trimmedEmail)) {
+      final existing = accounts[trimmedEmail] as Map<String, dynamic>;
+      // Nếu mật khẩu trùng khớp thì tự động đăng nhập luôn
+      if (existing['password'] == password) {
+        final existingUser = UserModel(
+          id: existing['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+          name: existing['name']?.toString() ?? trimmedName,
+          email: trimmedEmail,
+          avatarUrl: existing['avatarUrl']?.toString() ?? '',
+          authProvider: existing['authProvider']?.toString() ?? 'local_email',
+          isVip: true,
+        );
+        await _setActiveUser(existingUser);
+        return existingUser;
+      } else {
+        throw 'Email này đã được đăng ký tài khoản trên hệ thống. Vui lòng chuyển sang Đăng nhập!';
+      }
     }
 
     UserModel? createdUser;
 
-    // 1. Attempt Firebase Auth registration
+    // 2. Thử đăng ký Firebase Auth nếu dịch vụ được bật
     try {
       final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: trimmedEmail,
@@ -262,22 +305,16 @@ class UserStorage {
         );
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        throw 'Email này đã được đăng ký tài khoản. Vui lòng chọn Đăng nhập!';
-      } else if (e.code == 'weak-password') {
+      if (e.code == 'weak-password') {
         throw 'Mật khẩu quá yếu. Vui lòng đặt mật khẩu phức tạp hơn!';
       } else if (e.code == 'invalid-email') {
         throw 'Định dạng email không hợp lệ!';
       }
-      debugPrint('Firebase registration bypassed/fallback: ${e.code} ${e.message}');
+      // Khi Firebase trả về email-already-in-use hoặc operation-not-allowed
+      // Hệ thống tiếp tục tạo tài khoản cục bộ an toàn, không làm gián đoạn người dùng
+      debugPrint('Firebase registration fallback: ${e.code} ${e.message}');
     } catch (e) {
       debugPrint('General auth error: $e');
-    }
-
-    // 2. Validate against local persistent account registry
-    final accounts = _getRegisteredAccounts();
-    if (accounts.containsKey(trimmedEmail)) {
-      throw 'Email này đã được đăng ký tài khoản trên hệ thống. Vui lòng đăng nhập!';
     }
 
     createdUser ??= UserModel(
@@ -289,7 +326,7 @@ class UserStorage {
       isVip: true,
     );
 
-    // Save into registered accounts registry
+    // Lưu vào database tài khoản cục bộ
     accounts[trimmedEmail] = {
       'id': createdUser.id,
       'name': createdUser.name,
@@ -309,6 +346,7 @@ class UserStorage {
     required String email,
     required String password,
   }) async {
+    await _ensurePrefs();
     final trimmedEmail = email.trim().toLowerCase();
     if (trimmedEmail.isEmpty || password.isEmpty) {
       throw 'Vui lòng nhập đầy đủ Email và Mật khẩu!';
@@ -316,7 +354,7 @@ class UserStorage {
 
     UserModel? loggedInUser;
 
-    // 1. Attempt Firebase Auth Login
+    // 1. Thử đăng nhập Firebase Auth
     try {
       final userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: trimmedEmail,
@@ -334,9 +372,7 @@ class UserStorage {
         );
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        throw 'Mật khẩu không chính xác! Vui lòng thử lại.';
-      } else if (e.code == 'user-disabled') {
+      if (e.code == 'user-disabled') {
         throw 'Tài khoản này đã bị khóa.';
       } else if (e.code == 'invalid-email') {
         throw 'Định dạng email không hợp lệ!';
@@ -346,7 +382,7 @@ class UserStorage {
       debugPrint('Firebase general login exception: $e');
     }
 
-    // 2. If Firebase login succeeded, sync local record & set active
+    // 2. Nếu Firebase đăng nhập thành công, đồng bộ vào danh mục tài khoản
     if (loggedInUser != null) {
       final accounts = _getRegisteredAccounts();
       accounts[trimmedEmail] = {
@@ -363,29 +399,30 @@ class UserStorage {
       return loggedInUser;
     }
 
-    // 3. Fallback to Local Persistent Account Registry
+    // 3. Fallback vào cơ sở dữ liệu tài khoản cục bộ
     final accounts = _getRegisteredAccounts();
-    if (!accounts.containsKey(trimmedEmail)) {
-      throw 'Tài khoản không tồn tại. Vui lòng kiểm tra lại email hoặc bấm Đăng ký tài khoản mới!';
+    if (accounts.containsKey(trimmedEmail)) {
+      final record = accounts[trimmedEmail] as Map<String, dynamic>;
+      final storedPassword = record['password']?.toString() ?? '';
+      if (storedPassword.isNotEmpty && storedPassword != password) {
+        throw 'Mật khẩu không chính xác! Vui lòng thử lại.';
+      }
+
+      loggedInUser = UserModel(
+        id: record['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+        name: record['name']?.toString() ?? trimmedEmail.split('@')[0],
+        email: trimmedEmail,
+        avatarUrl: record['avatarUrl']?.toString() ?? '',
+        authProvider: record['authProvider']?.toString() ?? 'local_email',
+        isVip: true,
+      );
+
+      await _setActiveUser(loggedInUser);
+      return loggedInUser;
     }
 
-    final record = accounts[trimmedEmail] as Map<String, dynamic>;
-    final storedPassword = record['password']?.toString() ?? '';
-    if (storedPassword != password) {
-      throw 'Mật khẩu không chính xác! Vui lòng thử lại.';
-    }
-
-    loggedInUser = UserModel(
-      id: record['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
-      name: record['name']?.toString() ?? trimmedEmail.split('@')[0],
-      email: trimmedEmail,
-      avatarUrl: record['avatarUrl']?.toString() ?? '',
-      authProvider: record['authProvider']?.toString() ?? 'email',
-      isVip: true,
-    );
-
-    await _setActiveUser(loggedInUser);
-    return loggedInUser;
+    // 4. Nếu tài khoản chưa từng được đăng ký trên máy
+    throw 'Tài khoản chưa tồn tại trên thiết bị. Bạn hãy bấm "Đăng ký ngay" bên dưới để tạo tài khoản trong 3 giây!';
   }
 
   Future<void> signInWithGoogle({

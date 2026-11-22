@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/cache/user_storage.dart';
 import '../../../core/theme/app_colors.dart';
+import '../main_screen.dart';
 import 'sign_in_screen.dart';
 import 'sign_up_screen.dart';
 import 'google_auth_service.dart';
@@ -141,7 +143,39 @@ class LetsYouInScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+
+              // Guest VIP button
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await UserStorage().loginAsGuest();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MainScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.rocket_launch_rounded, color: AppColors.textPrimary, size: 18),
+                  label: const Text(
+                    'Trải nghiệm ngay (Khách VIP)',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.border, width: 1.2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),

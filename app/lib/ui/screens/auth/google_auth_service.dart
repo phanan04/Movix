@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/theme/app_colors.dart';
 import '../main_screen.dart';
+import 'sign_in_screen.dart';
 
 class GoogleAuthService {
   static bool _isGoogleSignInInitialized = false;
@@ -118,31 +119,118 @@ class GoogleAuthService {
     } catch (e) {
       debugPrint('Google Sign-In Exception: $e');
       if (context.mounted) {
-        Navigator.pop(context); // Close loading
-        String userFriendlyError = 'Lỗi đăng nhập Google: $e';
-        final errStr = e.toString().toLowerCase();
+        Navigator.pop(context); // Close loading dialog
 
-        if (errStr.contains('10') || errStr.contains('developer_error')) {
-          userFriendlyError = 'Dịch vụ Google Sign-In yêu cầu mã SHA-1 trên Firebase Console. Bạn vui lòng sử dụng Đăng nhập bằng Email & Mật khẩu bên dưới.';
-        } else if (errStr.contains('unauthorized-domain')) {
-          userFriendlyError = 'Tên miền chưa được cấp phép. Bạn hãy truy cập bằng http://localhost:8088 hoặc thêm 127.0.0.1 vào Firebase Authorized Domains.';
-        } else if (errStr.contains('popup-blocked')) {
-          userFriendlyError = 'Trình duyệt đang chặn popup. Hãy bấm biểu tượng pop-up trên thanh địa chỉ để cho phép.';
-        } else if (errStr.contains('popup_closed') || errStr.contains('canceled') || errStr.contains('cancelled') || errStr.contains('network_error')) {
-          userFriendlyError = 'Bạn đã hủy đăng nhập Google hoặc kết nối mạng bị gián đoạn.';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(userFriendlyError),
-            backgroundColor: AppColors.surfaceLight,
-            duration: const Duration(seconds: 6),
-            action: SnackBarAction(
-              label: 'Thử lại',
-              textColor: AppColors.primary,
-              onPressed: () => showGoogleSignInSheet(context),
-            ),
+        // Show a polished, helpful modal with fallback options
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: AppColors.surface,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
+          builder: (modalCtx) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 30),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Đăng nhập Google trên Android',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Google Sign-In trên ứng dụng Android đang chờ bổ sung mã SHA-1 của bản release trên Firebase Console.\n\nBạn có thể đăng nhập tức thì bằng Email hoặc tiếp tục xem phim ngay với tư cách Khách VIP!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Option 1: Login with Email
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.email_outlined, color: Colors.white, size: 20),
+                        label: const Text(
+                          'Đăng nhập bằng Email & Mật khẩu',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(modalCtx);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SignInScreen()),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Option 2: Guest VIP
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 18),
+                        label: const Text(
+                          'Trải nghiệm ngay (Khách VIP)',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.border, width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(modalCtx);
+                          await UserStorage().loginAsGuest();
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const MainScreen()),
+                              (route) => false,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       }
     }

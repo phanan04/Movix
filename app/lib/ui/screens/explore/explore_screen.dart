@@ -67,48 +67,106 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       case 'phim-chieu-rap': return 'Chiếu Rạp';
       case 'hoat-hinh': return 'Hoạt Hình';
       case 'tv-shows': return 'TV Shows';
+      case 'phim-vietsub': return 'Vietsub';
+      case 'phim-thuyet-minh': return 'Thuyết Minh';
+      case 'phim-long-tieng': return 'Lồng Tiếng';
+      case 'phim-sap-chieu': return 'Sắp Chiếu';
       default: return slug;
     }
   }
 
   String _getCategoryLabel(String slug) {
     switch (slug) {
-      case 'hanh-dong': return 'Hành Động';
-      case 'co-trang': return 'Cổ Trang';
-      case 'vien-tuong': return 'Viễn Tưởng';
-      case 'kinh-di': return 'Kinh Dị';
-      case 'tinh-cam': return 'Tình Cảm';
-      case 'hai-huoc': return 'Hài Hước';
-      case 'hoat-hinh': return 'Hoạt Hình';
-      case 'tam-ly': return 'Tâm Lý';
-      case 'vo-thuat': return 'Võ Thuật';
-      case 'phieu-luu': return 'Phiêu Lưu';
-      case 'than-thoai': return 'Thần Thoại';
-      case 'hoc-duong': return 'Học Đường';
-      case 'gia-dinh': return 'Gia Đình';
-      case 'tai-lieu': return 'Tài Liệu';
+      case 'am-nhac': return 'Âm Nhạc';
       case 'bi-an': return 'Bí Ẩn';
+      case 'chien-tranh': return 'Chiến Tranh';
+      case 'chinh-kich': return 'Chính Kịch';
+      case 'co-trang': return 'Cổ Trang';
+      case 'gia-dinh': return 'Gia Đình';
+      case 'hai-huoc': return 'Hài Hước';
+      case 'hanh-dong': return 'Hành Động';
+      case 'hinh-su': return 'Hình Sự';
+      case 'hoc-duong': return 'Học Đường';
+      case 'khoa-hoc': return 'Khoa Học';
+      case 'kinh-di': return 'Kinh Dị';
+      case 'kinh-dien': return 'Kinh Điển';
+      case 'lich-su': return 'Lịch Sử';
+      case 'mien-tay': return 'Miền Tây';
+      case 'phim-18': return 'Phim 18+';
+      case 'phim-ngan': return 'Phim Ngắn';
+      case 'phieu-luu': return 'Phiêu Lưu';
+      case 'tai-lieu': return 'Tài Liệu';
+      case 'tam-ly': return 'Tâm Lý';
+      case 'than-thoai': return 'Thần Thoại';
+      case 'the-thao': return 'Thể Thao';
+      case 'tinh-cam': return 'Tình Cảm';
+      case 'tre-em': return 'Trẻ Em';
+      case 'vien-tuong': return 'Viễn Tưởng';
+      case 'vo-thuat': return 'Võ Thuật';
+      case 'hoat-hinh': return 'Hoạt Hình';
       default: return slug;
     }
   }
 
   String _getRegionLabel(String slug) {
     switch (slug) {
+      case 'anh': return 'Anh';
+      case 'ba-lan': return 'Ba Lan';
+      case 'brazil': return 'Brazil';
+      case 'bo-dao-nha': return 'Bồ Đào Nha';
+      case 'canada': return 'Canada';
+      case 'chau-phi': return 'Châu Phi';
+      case 'ha-lan': return 'Hà Lan';
       case 'han-quoc': return 'Hàn Quốc';
-      case 'trung-quoc': return 'Trung Quốc';
-      case 'au-my': return 'Âu Mỹ';
-      case 'viet-nam': return 'Việt Nam';
+      case 'hong-kong': return 'Hồng Kông';
+      case 'indonesia': return 'Indonesia';
+      case 'malaysia': return 'Malaysia';
+      case 'mexico': return 'Mexico';
+      case 'na-uy': return 'Na Uy';
+      case 'nam-phi': return 'Nam Phi';
+      case 'nga': return 'Nga';
       case 'nhat-ban': return 'Nhật Bản';
+      case 'philippines': return 'Philippines';
+      case 'phap': return 'Pháp';
+      case 'quoc-gia-khac': return 'Quốc Gia Khác';
+      case 'thai-lan': return 'Thái Lan';
+      case 'tho-nhi-ky': return 'Thổ Nhĩ Kỳ';
+      case 'thuy-si': return 'Thụy Sĩ';
+      case 'thuy-dien': return 'Thụy Điển';
+      case 'trung-quoc': return 'Trung Quốc';
+      case 'tay-ban-nha': return 'Tây Ban Nha';
+      case 'uae': return 'UAE';
+      case 'ukraina': return 'Ukraina';
+      case 'viet-nam': return 'Việt Nam';
+      case 'au-my': return 'Âu Mỹ';
+      case 'uc': return 'Úc';
+      case 'y': return 'Ý';
+      case 'dan-mach': return 'Đan Mạch';
+      case 'dai-loan': return 'Đài Loan';
+      case 'duc': return 'Đức';
+      case 'a-rap-xe-ut': return 'Ả Rập Xê Út';
+      case 'an-do': return 'Ấn Độ';
       default: return slug;
     }
   }
 
-  String _getSortLabel(String sort) {
-    switch (sort) {
-      case 'rating': return 'Điểm cao';
+  String _getSortFieldLabel(String field) {
+    switch (field) {
+      case 'modified.time': return 'Cập nhật';
+      case '_id': return 'Thời gian đăng';
+      case 'year': return 'Năm sản xuất';
       case 'popular': return 'Phổ biến';
-      case 'latest': return 'Mới nhất';
-      default: return sort;
+      case 'rating': return 'Điểm cao';
+      default: return field;
+    }
+  }
+
+  String _getLangLabel(String lang) {
+    switch (lang) {
+      case 'vietsub': return 'Vietsub';
+      case 'thuyet-minh': return 'Thuyết Minh';
+      case 'long-tieng': return 'Lồng Tiếng';
+      default: return lang;
     }
   }
 
@@ -148,7 +206,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               onChanged: _onSearchChanged,
                               style: const TextStyle(color: Colors.white, fontSize: 14),
                               decoration: const InputDecoration(
-                                hintText: 'Tìm kiếm tên phim, diễn viên...',
+                                hintText: 'Tìm kiếm tên phim (tiếng Việt, tiếng Anh)...',
                                 hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
                                 border: InputBorder.none,
                                 isDense: true,
@@ -179,15 +237,29 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         child: IconButton(
                           icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 22),
                           onPressed: () {
-                            SortFilterBottomSheet.show(context, onApply: (filters) {
-                              ref.read(exploreFilterProvider.notifier).updateFilter(
-                                sort: filters['sort'],
-                                type: filters['type'],
-                                category: filters['category'],
-                                region: filters['region'],
-                                year: filters['year'],
-                              );
-                            });
+                            SortFilterBottomSheet.show(
+                              context,
+                              initialFilters: {
+                                'sort_field': filter.sortField,
+                                'sort_type': filter.sortType,
+                                'lang': filter.lang,
+                                'type': filter.type,
+                                'category': filter.category,
+                                'region': filter.region,
+                                'year': filter.year,
+                              },
+                              onApply: (filters) {
+                                ref.read(exploreFilterProvider.notifier).updateFilter(
+                                  sortField: filters['sort_field'],
+                                  sortType: filters['sort_type'],
+                                  lang: filters['lang'],
+                                  type: filters['type'],
+                                  category: filters['category'],
+                                  region: filters['region'],
+                                  year: filters['year'],
+                                );
+                              },
+                            );
                           },
                         ),
                       ),
@@ -221,9 +293,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            if (filter.sort != 'latest')
-                              _buildActiveFilterChip('Sắp xếp: ${_getSortLabel(filter.sort)}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(sort: 'latest');
+                            if (filter.sortField != 'modified.time' || filter.sortType != 'desc')
+                              _buildActiveFilterChip(
+                                'Sắp xếp: ${_getSortFieldLabel(filter.sortField)} (${filter.sortType == 'desc' ? 'Mới nhất' : 'Cũ nhất'})',
+                                () {
+                                  ref.read(exploreFilterProvider.notifier).updateFilter(
+                                    sortField: 'modified.time',
+                                    sortType: 'desc',
+                                  );
+                                },
+                              ),
+                            if (filter.lang != 'all')
+                              _buildActiveFilterChip('Ngôn ngữ: ${_getLangLabel(filter.lang)}', () {
+                                ref.read(exploreFilterProvider.notifier).updateFilter(lang: 'all');
                               }),
                             if (filter.type != 'all')
                               _buildActiveFilterChip('Loại: ${_getTypeLabel(filter.type)}', () {
@@ -234,7 +316,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
                               }),
                             if (filter.region != 'all')
-                              _buildActiveFilterChip('Khu vực: ${_getRegionLabel(filter.region)}', () {
+                              _buildActiveFilterChip('Quốc gia: ${_getRegionLabel(filter.region)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(region: 'all');
                               }),
                             if (filter.year != 'all')

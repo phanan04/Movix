@@ -44,36 +44,50 @@ final tvShowsMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
 
 // Explore Filter State Model
 class ExploreFilterState {
-  final String type;     // 'all', 'phim-le', 'phim-bo', 'phim-chieu-rap', 'hoat-hinh', 'tv-shows'
-  final String category; // 'all' or slug ('hanh-dong', 'co-trang', ...)
-  final String region;   // 'all' or slug ('han-quoc', 'au-my', ...)
-  final String year;     // 'all' or year string ('2026', '2025', ..., 'truoc-2019')
-  final String sort;     // 'latest', 'popular', 'rating'
+  final String type; // 'all', 'phim-le', 'phim-bo', 'phim-chieu-rap', 'hoat-hinh', 'tv-shows'
+  final String category; // 'all' or slug (26 thể loại)
+  final String region; // 'all' or slug (36 quốc gia)
+  final String year; // 'all' or year string ('2026', '2025', ..., '1970')
+  final String lang; // 'all', 'vietsub', 'thuyet-minh', 'long-tieng'
+  final String sortField; // 'modified.time', '_id', 'year'
+  final String sortType; // 'desc', 'asc'
 
   const ExploreFilterState({
     this.type = 'all',
     this.category = 'all',
     this.region = 'all',
     this.year = 'all',
-    this.sort = 'latest',
+    this.lang = 'all',
+    this.sortField = 'modified.time',
+    this.sortType = 'desc',
   });
 
   bool get hasActiveFilter =>
-      type != 'all' || category != 'all' || region != 'all' || year != 'all' || sort != 'latest';
+      type != 'all' ||
+      category != 'all' ||
+      region != 'all' ||
+      year != 'all' ||
+      lang != 'all' ||
+      sortField != 'modified.time' ||
+      sortType != 'desc';
 
   ExploreFilterState copyWith({
     String? type,
     String? category,
     String? region,
     String? year,
-    String? sort,
+    String? lang,
+    String? sortField,
+    String? sortType,
   }) {
     return ExploreFilterState(
       type: type ?? this.type,
       category: category ?? this.category,
       region: region ?? this.region,
       year: year ?? this.year,
-      sort: sort ?? this.sort,
+      lang: lang ?? this.lang,
+      sortField: sortField ?? this.sortField,
+      sortType: sortType ?? this.sortType,
     );
   }
 }
@@ -82,8 +96,24 @@ class ExploreFilterNotifier extends Notifier<ExploreFilterState> {
   @override
   ExploreFilterState build() => const ExploreFilterState();
 
-  void updateFilter({String? type, String? category, String? region, String? year, String? sort}) {
-    state = state.copyWith(type: type, category: category, region: region, year: year, sort: sort);
+  void updateFilter({
+    String? type,
+    String? category,
+    String? region,
+    String? year,
+    String? lang,
+    String? sortField,
+    String? sortType,
+  }) {
+    state = state.copyWith(
+      type: type,
+      category: category,
+      region: region,
+      year: year,
+      lang: lang,
+      sortField: sortField,
+      sortType: sortType,
+    );
   }
 
   void resetFilter() {
@@ -100,48 +130,39 @@ final exploreMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
   final api = ref.watch(apiServiceProvider);
   final filter = ref.watch(exploreFilterProvider);
 
-  List<MovieItem> movies = [];
+  // Nếu chọn sortField là 'rating' hoặc 'popular', gọi API với 'modified.time' rồi sắp xếp thêm ở client
+  final apiSortField = (filter.sortField == 'rating' || filter.sortField == 'popular')
+      ? 'modified.time'
+      : filter.sortField;
 
-  // Primary fetch based on user's strongest explicit filter
-  if (filter.type != 'all') {
-    movies = await api.getMoviesByType(filter.type, page: 1, limit: 36);
-  } else if (filter.region != 'all') {
-    movies = await api.getMoviesByCountry(filter.region, page: 1, limit: 36);
-  } else if (filter.category != 'all') {
-    movies = await api.getMoviesByCategory(filter.category, page: 1, limit: 36);
-  } else if (filter.year != 'all' && int.tryParse(filter.year) != null) {
-    movies = await api.getMoviesByYear(int.parse(filter.year), page: 1, limit: 36);
-  } else {
-    movies = await api.getMoviesByType('phim-moi', page: 1, limit: 36);
+  var movies = await api.getFilteredMovies(
+    type: filter.type,
+    category: filter.category,
+    country: filter.region,
+    year: filter.year,
+    sortLang: filter.lang,
+    sortField: apiSortField,
+    sortType: filter.sortType,
+    page: 1,
+    limit: 36,
+  );
+
+  // Post-processing nếu người dùng chọn sắp xếp theo Điểm đánh giá cao hoặc Phổ biến
+  if (filter.sortField == 'rating') {
+    final list = List<MovieItem>.from(movies);
+    list.sort((a, b) => filter.sortType == 'asc'
+        ? a.voteAverage.compareTo(b.voteAverage)
+        : b.voteAverage.compareTo(a.voteAverage));
+    return list;
+  } else if (filter.sortField == 'popular') {
+    final list = List<MovieItem>.from(movies);
+    list.sort((a, b) => filter.sortType == 'asc'
+        ? a.year.compareTo(b.year)
+        : b.year.compareTo(a.year));
+    return list;
   }
 
-  // Secondary year filter
-  if (filter.year != 'all') {
-    if (filter.year == 'truoc-2019' || filter.year == 'Trước 2019') {
-      final filtered = movies.where((m) => m.year > 0 && m.year < 2019).toList();
-      if (filtered.isNotEmpty) {
-        movies = filtered;
-      }
-    } else {
-      final targetYear = int.tryParse(filter.year);
-      if (targetYear != null) {
-        final filtered = movies.where((m) => m.year == targetYear).toList();
-        if (filtered.isNotEmpty) {
-          movies = filtered;
-        }
-      }
-    }
-  }
-
-  // Real Sort ordering
-  final result = List<MovieItem>.from(movies);
-  if (filter.sort == 'rating') {
-    result.sort((a, b) => b.voteAverage.compareTo(a.voteAverage));
-  } else if (filter.sort == 'popular') {
-    result.sort((a, b) => b.year.compareTo(a.year));
-  }
-
-  return result;
+  return movies;
 });
 
 // Chi tiết phim (theo slug)
@@ -168,7 +189,14 @@ final searchResultsProvider = FutureProvider<List<MovieItem>>((ref) async {
   final query = ref.watch(searchQueryProvider);
   if (query.trim().isEmpty) return [];
   final api = ref.watch(apiServiceProvider);
-  return api.searchMovies(query);
+  final filter = ref.watch(exploreFilterProvider);
+  return api.searchMovies(
+    query,
+    category: filter.category,
+    country: filter.region,
+    year: filter.year,
+    limit: 48,
+  );
 });
 
 // Phim tương tự (theo thể loại)

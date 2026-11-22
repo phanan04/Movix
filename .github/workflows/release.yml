@@ -119,11 +119,15 @@ jobs:
             ### 📦 Tải file cài đặt:
             - **Android APK**: Tải file `Movix-${{ steps.prepare_apk.outputs.raw_version }}.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
             
-            ### ✨ Tính năng & Cải tiến mới trong v1.1.0:
-            - **Đồng bộ phiên bản động theo thời gian thực (Dynamic Version Sync)**: Ứng dụng tự động đọc chính xác số phiên bản thực tế cài đặt trên thiết bị (`v1.1.0`), loại bỏ tình trạng hiển thị lệch số phiên bản cũ trong màn hình Cá nhân & Cài đặt.
-            - **Kết nối Cloud Database (Firebase Authentication) chính thức**: Hệ thống tài khoản người dùng thật được lưu trữ và bảo mật trực tiếp trên đám mây của Google Firebase.
-            - **Chuẩn hóa 100% người dùng thật**: Bỏ hoàn toàn tài khoản thử / khách, đồng bộ danh sách phim yêu thích và tiến trình xem dở vĩnh viễn.
-            - **Tối ưu trải nghiệm màn hình ngang & đa thiết bị**: Hộp thoại đăng nhập và chi tiết phim tự động căn chỉnh và cuộn mượt mà trên điện thoại xoay ngang, máy tính bảng và Android TV.
+            ### ✨ Tính năng & Cải tiến mới trong v1.1.1:
+            - **Tích hợp kho phim đa nguồn KKPhim & VSMov (hơn 50,000+ phim)**: Tự động tổng hợp và cập nhật liên tục các tựa phim mới nhất từ cả hai nền tảng.
+            - **Tìm kiếm song song đa nguồn (Parallel Search)**: Gửi truy vấn đồng thời tới KKPhim và VSMov, tự động gộp và khử trùng lặp theo tên và slug với cơ chế fallback NguonC.
+            - **Trình phát đa máy chủ & Trích xuất HLS VSMov trực tiếp**: Tự động giải mã stream HLS `.m3u8` trực tiếp từ CDN VSMov, mang lại trải nghiệm xem không gián đoạn, không quảng cáo.
+            - **Đo độ trễ thực tế (Ping ms) theo thời gian thực**: Trình phát chủ động đo tốc độ phản hồi tới từng máy chủ CDN (🟢 Rất nhanh < 120ms, 🟡 Ổn định < 300ms, 🔴 Chậm > 300ms) kèm nút đo lại ping tức thì.
+            - **Bộ chọn nguồn & Cài đặt phát dạng Popover Dropdown nổi mini**: Thiết kế lại toàn bộ giao diện chọn máy chủ và cài đặt phát theo phong cách YouTube / Netflix nhỏ gọn, không che video, không làm mờ màn hình.
+            - **Chuyển máy chủ phát mượt mà (Seamless Resume)**: Khi đổi máy chủ phát, video tiếp tục phát chính xác tại giây hiện tại mà không bị khởi động lại từ đầu.
+            - **Nâng cấp bộ lọc danh mục toàn diện**: Hỗ trợ đầy đủ 26 thể loại, 36 quốc gia, các năm 1970–2026 và sắp xếp Phổ biến nhất / Đánh giá cao.
+            - **Chuẩn hóa giao diện cá nhân**: Loại bỏ hoàn toàn các huy hiệu VIP trọn đời.
           draft: false
           prerelease: false
           generate_release_notes: false

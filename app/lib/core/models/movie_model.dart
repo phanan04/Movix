@@ -42,12 +42,27 @@ class EpisodeItem {
   });
 
   factory EpisodeItem.fromJson(Map<String, dynamic> json) {
+    var embed = json['link_embed']?.toString() ?? json['embed']?.toString() ?? '';
+    var m3u8 = json['link_m3u8']?.toString() ?? json['m3u8']?.toString() ?? '';
+
+    // Tự động trích xuất trực tiếp HLS m3u8 từ VSMov Stream Embed
+    if (m3u8.isEmpty && embed.isNotEmpty) {
+      final vsmovMatch = RegExp(r'(https?://[^/]+\.streamvsmov\.com)/video/([a-zA-Z0-9\-]+)').firstMatch(embed);
+      if (vsmovMatch != null) {
+        final host = vsmovMatch.group(1);
+        final hash = vsmovMatch.group(2);
+        m3u8 = '$host/stream/$hash/master.m3u8';
+      } else if (embed.contains('.m3u8')) {
+        m3u8 = embed;
+      }
+    }
+
     return EpisodeItem(
       name: json['name']?.toString() ?? '',
       slug: json['slug']?.toString() ?? '',
       filename: json['filename']?.toString() ?? '',
-      linkEmbed: json['link_embed']?.toString() ?? json['embed']?.toString() ?? '',
-      linkM3u8: json['link_m3u8']?.toString() ?? json['m3u8']?.toString() ?? '',
+      linkEmbed: embed,
+      linkM3u8: m3u8,
     );
   }
 
@@ -79,8 +94,10 @@ class EpisodeServer {
         }
       }
     }
+    final rawName = json['server_name']?.toString() ?? 'Server 1';
+    final cleanName = rawName.replaceAll(RegExp(r'\s+'), ' ').trim();
     return EpisodeServer(
-      serverName: json['server_name']?.toString() ?? 'Server 1',
+      serverName: cleanName.isNotEmpty ? cleanName : 'Server 1',
       serverData: items,
     );
   }
@@ -173,15 +190,15 @@ class MovieItem {
     final rawImdb = json['imdb'];
     double parsedVote = 0.0;
     if (rawTmdb is Map && rawTmdb['vote_average'] != null) {
-      parsedVote = (rawTmdb['vote_average'] as num).toDouble();
+      parsedVote = double.tryParse(rawTmdb['vote_average'].toString()) ?? 0.0;
     } else if (rawImdb is Map && rawImdb['vote_average'] != null) {
-      parsedVote = (rawImdb['vote_average'] as num).toDouble();
+      parsedVote = double.tryParse(rawImdb['vote_average'].toString()) ?? 0.0;
     }
 
     return MovieItem(
       id: json['_id']?.toString() ?? json['id']?.toString() ?? json['slug']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
-      originName: json['origin_name']?.toString() ?? json['name']?.toString() ?? '',
+      originName: json['origin_name']?.toString() ?? json['original_name']?.toString() ?? json['name']?.toString() ?? '',
       slug: json['slug']?.toString() ?? '',
       thumbUrl: json['thumb_url']?.toString() ?? json['poster_url']?.toString() ?? '',
       posterUrl: json['poster_url']?.toString() ?? json['thumb_url']?.toString() ?? '',
@@ -287,6 +304,34 @@ class MovieDetail {
       tmdbVoteAverage: tmdb.voteAverage,
       tmdbVoteCount: tmdb.voteCount,
       tmdbCast: tmdb.cast,
+    );
+  }
+
+  MovieDetail copyWithEpisodes(List<EpisodeServer> newEpisodes) {
+    return MovieDetail(
+      id: id,
+      name: name,
+      originName: originName,
+      slug: slug,
+      type: type,
+      thumbUrl: thumbUrl,
+      posterUrl: posterUrl,
+      time: time,
+      episodeCurrent: episodeCurrent,
+      episodeTotal: episodeTotal,
+      quality: quality,
+      lang: lang,
+      year: year,
+      content: content,
+      actors: actors,
+      directors: directors,
+      categories: categories,
+      episodes: newEpisodes,
+      tmdbBackdropUrl: tmdbBackdropUrl,
+      tmdbPosterUrl: tmdbPosterUrl,
+      tmdbVoteAverage: tmdbVoteAverage,
+      tmdbVoteCount: tmdbVoteCount,
+      tmdbCast: tmdbCast,
     );
   }
 

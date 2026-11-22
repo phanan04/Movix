@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:popover/popover.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
@@ -31,6 +33,12 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   VideoPlayerController? _nativeController;
   late String _webPlayerId;
   final GlobalKey _videoPlayerKey = GlobalKey();
+
+  // Multi-source Streaming & Server Management
+  late int _selectedServerIndex;
+  late List<EpisodeItem> _currentEpisodeList;
+  final Map<int, int> _serverLatencies = {};
+  final Set<int> _pingingServers = {};
 
   final bool _isWebMode = kIsWeb;
   bool _isPlaying = true;
@@ -77,8 +85,26 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     super.initState();
     _currentEpisode = widget.episode;
     _currentPosition = widget.initialPositionSeconds.toDouble();
+
+    // Khởi tạo máy chủ phát hiện tại
+    _selectedServerIndex = 0;
+    if (widget.movie.episodes.isNotEmpty) {
+      final sIdx = widget.movie.episodes.indexWhere(
+        (s) => s.serverData.any((e) => e.slug == widget.episode.slug || (e.linkM3u8.isNotEmpty && e.linkM3u8 == widget.episode.linkM3u8)),
+      );
+      if (sIdx != -1) {
+        _selectedServerIndex = sIdx;
+      }
+      _currentEpisodeList = widget.movie.episodes[_selectedServerIndex].serverData;
+    } else {
+      _currentEpisodeList = widget.allEpisodes;
+    }
+
     _webPlayerId = 'movix_player_${_currentEpisode.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
     _startPlaying();
+
+    // Đo độ trễ thực ms đến tất cả máy chủ phát (KKPhim, VSMov,...)
+    _measureAllServerLatencies();
 
     // Netflix logic: Chuyển ngay sang màn hình ngang toàn màn hình (Landscape Immersive) trên thiết bị di động
     if (!kIsWeb) {
@@ -91,7 +117,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
     // Auto calculate initial episode chunk for the drawer
     const chunkSize = 20;
-    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
     if (curIdx >= 0) {
       _drawerChunkIndex = curIdx ~/ chunkSize;
     }
@@ -377,7 +403,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   void _toggleEpisodeDrawer() {
     if (!_showEpisodeDrawer) {
       const chunkSize = 20;
-      final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+      final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
       if (curIdx >= 0) {
         _drawerChunkIndex = curIdx ~/ chunkSize;
       }
@@ -421,17 +447,389 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   }
 
   void _playNextEpisode() {
-    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
-    if (curIdx != -1 && curIdx + 1 < widget.allEpisodes.length) {
-      _switchEpisode(widget.allEpisodes[curIdx + 1]);
+    final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
+    if (curIdx != -1 && curIdx + 1 < _currentEpisodeList.length) {
+      _switchEpisode(_currentEpisodeList[curIdx + 1]);
     }
   }
 
   void _playPrevEpisode() {
-    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
     if (curIdx > 0) {
-      _switchEpisode(widget.allEpisodes[curIdx - 1]);
+      _switchEpisode(_currentEpisodeList[curIdx - 1]);
     }
+  }
+
+  // Multi-source Streaming: Đo độ trễ ping thực tế đến các máy chủ phát (ms)
+  Future<void> _measureAllServerLatencies() async {
+    if (widget.movie.episodes.isEmpty) return;
+
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 4),
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+
+    for (int i = 0; i < widget.movie.episodes.length; i++) {
+      final server = widget.movie.episodes[i];
+      if (server.serverData.isEmpty) continue;
+
+      if (mounted) {
+        setState(() => _pingingServers.add(i));
+      }
+
+      final testUrl = server.serverData.first.linkM3u8.isNotEmpty
+          ? server.serverData.first.linkM3u8
+          : server.serverData.first.linkEmbed;
+
+      if (testUrl.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _pingingServers.remove(i);
+            _serverLatencies[i] = -1;
+          });
+        }
+        continue;
+      }
+
+      () async {
+        final stopwatch = Stopwatch()..start();
+        try {
+          await dio.head(testUrl);
+          stopwatch.stop();
+          final ms = stopwatch.elapsedMilliseconds;
+          if (mounted) {
+            setState(() {
+              _pingingServers.remove(i);
+              _serverLatencies[i] = ms;
+            });
+          }
+        } catch (_) {
+          try {
+            stopwatch.reset();
+            stopwatch.start();
+            await dio.get(
+              testUrl,
+              options: Options(headers: {'Range': 'bytes=0-100'}),
+            );
+            stopwatch.stop();
+            final ms = stopwatch.elapsedMilliseconds;
+            if (mounted) {
+              setState(() {
+                _pingingServers.remove(i);
+                _serverLatencies[i] = ms;
+              });
+            }
+          } catch (e) {
+            if (mounted) {
+              setState(() {
+                _pingingServers.remove(i);
+                _serverLatencies[i] = -1;
+              });
+            }
+          }
+        }
+      }();
+    }
+  }
+
+  // Chuyển đổi máy chủ phát ngay lập tức (giữ nguyên vị trí đang xem giây thứ mấy)
+  void _switchServer(int newIndex) {
+    if (newIndex < 0 || newIndex >= widget.movie.episodes.length) return;
+    if (newIndex == _selectedServerIndex) return;
+
+    final targetServer = widget.movie.episodes[newIndex];
+    if (targetServer.serverData.isEmpty) {
+      _showHudToast('Máy chủ này hiện chưa có tập phim');
+      return;
+    }
+
+    _saveProgress();
+
+    // Tìm tập phim tương ứng trên server mới
+    EpisodeItem? matchedEp;
+    final bySlug = targetServer.serverData.where((e) => e.slug == _currentEpisode.slug).toList();
+    if (bySlug.isNotEmpty) {
+      matchedEp = bySlug.first;
+    } else {
+      final curCleanName = _currentEpisode.name.replaceAll(RegExp(r'[^0-9]'), '');
+      if (curCleanName.isNotEmpty) {
+        final byNum = targetServer.serverData.where((e) {
+          final sClean = e.name.replaceAll(RegExp(r'[^0-9]'), '');
+          return sClean == curCleanName;
+        }).toList();
+        if (byNum.isNotEmpty) matchedEp = byNum.first;
+      }
+    }
+
+    if (matchedEp == null) {
+      final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
+      if (curIdx >= 0 && curIdx < targetServer.serverData.length) {
+        matchedEp = targetServer.serverData[curIdx];
+      } else {
+        matchedEp = targetServer.serverData.first;
+      }
+    }
+
+    final resumePosition = _currentPosition;
+
+    setState(() {
+      _selectedServerIndex = newIndex;
+      _currentEpisodeList = targetServer.serverData;
+      _currentEpisode = matchedEp!;
+      _webPlayerId = 'movix_player_${matchedEp.slug}_${DateTime.now().millisecondsSinceEpoch % 100000}';
+    });
+
+    if (_isWebMode) {
+      webPlay(_webPlayerId);
+      if (resumePosition > 0) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          webSeekTo(_webPlayerId, resumePosition);
+        });
+      }
+    } else {
+      _initNativePlayer(_currentEpisode.linkM3u8);
+      if (resumePosition > 0 && _nativeController != null) {
+        _nativeController!.seekTo(Duration(seconds: resumePosition.round()));
+      }
+    }
+
+    final ping = _serverLatencies[newIndex];
+    final pingStr = (ping != null && ping > 0) ? ' ($ping ms)' : '';
+    _showHudToast('Đã đổi sang: ${targetServer.serverName}$pingStr');
+  }
+
+  Color _getServerLatencyColor(int? ms) {
+    if (ms == null || ms < 0) return Colors.white54;
+    if (ms < 120) return const Color(0xFF22C55E); // Green
+    if (ms < 300) return const Color(0xFFEAB308); // Yellow
+    return const Color(0xFFEF4444); // Red
+  }
+
+  String _getServerLatencyText(int? ms, bool isPinging) {
+    if (isPinging) return '...';
+    if (ms == null) return '-- ms';
+    if (ms < 0) return 'Lỗi';
+    return '${ms}ms';
+  }
+
+  // Multi-source Streaming: Popover menu chọn máy chủ phát gọn gàng & hiện đại (chuẩn YouTube/Netflix)
+  void _showServerSelectionPopover(BuildContext anchorContext) {
+    final popoverHeight = (widget.movie.episodes.length * 56.0 + 58.0).clamp(150.0, 310.0);
+
+    showPopover(
+      context: anchorContext,
+      direction: PopoverDirection.bottom,
+      width: 295,
+      height: popoverHeight,
+      style: PopoverStyle(
+        backgroundColor: const Color(0xF8151722),
+        radius: 14,
+        arrowHeight: 6,
+        arrowWidth: 12,
+        barrierColor: Colors.black.withValues(alpha: 0.15),
+        shadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.7),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      bodyBuilder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setPopState) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryMuted,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.dns_rounded, color: AppColors.primary, size: 15),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Nguồn phát & Máy chủ',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh_rounded, color: Colors.white70, size: 16),
+                        tooltip: 'Đo lại độ trễ',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                        onPressed: () {
+                          _measureAllServerLatencies();
+                          setPopState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white12, height: 12),
+                  // Servers List
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: widget.movie.episodes.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 6),
+                      itemBuilder: (context, idx) {
+                        final server = widget.movie.episodes[idx];
+                        final isSelected = _selectedServerIndex == idx;
+                        final isPinging = _pingingServers.contains(idx);
+                        final ms = _serverLatencies[idx];
+                        final latencyColor = _getServerLatencyColor(ms);
+
+                        String pingText = '';
+                        if (isPinging) {
+                          pingText = 'Đang đo...';
+                        } else if (ms != null && ms >= 0) {
+                          pingText = '$ms ms';
+                        } else {
+                          pingText = 'Kém';
+                        }
+
+                        return InkWell(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _switchServer(idx);
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primaryMuted
+                                  : Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isSelected ? AppColors.primary : Colors.transparent,
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                                  color: isSelected ? AppColors.primary : Colors.white38,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              server.serverName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: isSelected ? AppColors.primary : Colors.white,
+                                                fontSize: 12.5,
+                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          if (server.serverName.contains('VSMov'))
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: const Color(0xFF3B82F6), width: 0.6),
+                                              ),
+                                              child: const Text(
+                                                'VSMov',
+                                                style: TextStyle(color: Color(0xFF60A5FA), fontSize: 8.5, fontWeight: FontWeight.bold),
+                                              ),
+                                            )
+                                          else
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primaryMuted,
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: AppColors.primary, width: 0.6),
+                                              ),
+                                              child: const Text(
+                                                'KKPhim',
+                                                style: TextStyle(color: AppColors.primary, fontSize: 8.5, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          if (isPinging)
+                                            const SizedBox(
+                                              width: 7,
+                                              height: 7,
+                                              child: CircularProgressIndicator(strokeWidth: 1.2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white70)),
+                                            )
+                                          else
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(color: latencyColor, shape: BoxShape.circle),
+                                            ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            pingText,
+                                            style: TextStyle(color: latencyColor, fontSize: 10.5, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'ĐANG PHÁT',
+                                      style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   String _formatDuration(double seconds) {
@@ -447,247 +845,331 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     return '${remMins.toString().padLeft(2, '0')}:${remSecs.toString().padLeft(2, '0')}';
   }
 
-  // Redesigned Settings Sheet: Clean, focused, non-duplicated, fully responsive in landscape & portrait
-  void _showAudioSettingsSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  // Cài đặt trình phát dạng Popover gọn gàng & hiện đại (chuẩn YouTube/Netflix)
+  void _showSettingsPopover(BuildContext anchorContext) {
+    showPopover(
+      context: anchorContext,
+      direction: PopoverDirection.bottom,
+      width: 310,
+      height: 425,
+      style: PopoverStyle(
+        backgroundColor: const Color(0xF8151722),
+        radius: 14,
+        arrowHeight: 6,
+        arrowWidth: 12,
+        barrierColor: Colors.black.withValues(alpha: 0.15),
+        shadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.7),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      builder: (context) {
+      bodyBuilder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final isLandscape = MediaQuery.of(context).size.width > MediaQuery.of(context).size.height;
-            final sheetHeight = isLandscape
-                ? MediaQuery.of(context).size.height * 0.95
-                : MediaQuery.of(context).size.height * 0.8;
-
-            Widget volumeTile() {
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: IconButton(
-                  icon: Icon(
-                    _isMuted || _volume == 0
-                        ? Icons.volume_off_rounded
-                        : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                    color: AppColors.primary,
-                  ),
-                  onPressed: () {
-                    _toggleMute();
-                    setSheetState(() {});
-                  },
-                ),
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Âm lượng phim', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    Text(
-                      _isMuted ? 'Tắt tiếng' : '${(_volume * 100).round()}%',
-                      style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                subtitle: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                  ),
-                  child: Slider(
-                    value: _isMuted ? 0.0 : _volume,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 20,
-                    activeColor: AppColors.primary,
-                    inactiveColor: Colors.white24,
-                    onChanged: (val) {
-                      _setVolume(val);
-                      setSheetState(() {});
-                    },
-                  ),
-                ),
-              );
-            }
-
-            Widget resolutionTile() {
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: const Icon(Icons.hd_rounded, color: AppColors.primary, size: 22),
-                title: const Text('Độ phân giải video', style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: Text(_selectedQuality, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                trailing: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedQuality,
-                    dropdownColor: AppColors.surfaceLight,
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                    items: ['1080p FHD', '720p HD', '480p SD', 'Tự động'].map((q) {
-                      return DropdownMenuItem(value: q, child: Text(q));
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setSheetState(() => _selectedQuality = val);
-                        setState(() => _selectedQuality = val);
-                        _showHudToast('Độ phân giải: $val');
-                      }
-                    },
-                  ),
-                ),
-              );
-            }
-
-            Widget audioSubtitleTile() {
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: const Icon(Icons.subtitles_rounded, color: AppColors.primary, size: 22),
-                title: const Text('Âm thanh & Phụ đề', style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: Text(_selectedAudioTrack, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                trailing: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedAudioTrack,
-                    dropdownColor: AppColors.surfaceLight,
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                    items: ['Tiếng gốc (Vietsub)', 'Thuyết minh Việt', 'Lồng tiếng'].map((t) {
-                      return DropdownMenuItem(value: t, child: Text(t));
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setSheetState(() => _selectedAudioTrack = val);
-                        setState(() => _selectedAudioTrack = val);
-                        _showHudToast('Đã chọn: $val');
-                      }
-                    },
-                  ),
-                ),
-              );
-            }
-
-            Widget autoPlayNextTile() {
-              return SwitchListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                secondary: const Icon(Icons.playlist_play_rounded, color: AppColors.primary, size: 22),
-                title: const Text('Tự động chuyển tập tiếp', style: TextStyle(color: Colors.white, fontSize: 13)),
-                value: _autoPlayNext,
-                activeColor: AppColors.primary,
-                onChanged: (val) {
-                  setSheetState(() => _autoPlayNext = val);
-                  setState(() => _autoPlayNext = val);
-                },
-              );
-            }
-
-            Widget skipIntroTile() {
-              return SwitchListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                secondary: const Icon(Icons.skip_next_rounded, color: AppColors.primary, size: 22),
-                title: const Text('Bỏ qua đoạn mở đầu (Intro)', style: TextStyle(color: Colors.white, fontSize: 13)),
-                value: _enableSkipIntro,
-                activeColor: AppColors.primary,
-                onChanged: (val) {
-                  setSheetState(() => _enableSkipIntro = val);
-                  setState(() => _enableSkipIntro = val);
-                },
-              );
-            }
-
-            return ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: sheetHeight,
-                maxWidth: isLandscape ? 680 : 500,
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+          builder: (ctx, setPopState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Handle bar
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: AppColors.borderLight,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      // Header Row with Title & Close button
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Cài đặt phát & Âm thanh',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryMuted,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.tune_rounded, color: AppColors.primary, size: 15),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
-                            onPressed: () => Navigator.pop(context),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Cài đặt trình phát',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-
-                      // Content: 2-Column in landscape, 1-Column in portrait
-                      Flexible(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: isLandscape
-                              ? Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          volumeTile(),
-                                          const Divider(color: AppColors.border, height: 1),
-                                          resolutionTile(),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 24),
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          audioSubtitleTile(),
-                                          const Divider(color: AppColors.border, height: 1),
-                                          autoPlayNextTile(),
-                                          skipIntroTile(),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    volumeTile(),
-                                    const Divider(color: AppColors.border, height: 1),
-                                    resolutionTile(),
-                                    const Divider(color: AppColors.border, height: 1),
-                                    audioSubtitleTile(),
-                                    const Divider(color: AppColors.border, height: 1),
-                                    autoPlayNextTile(),
-                                    skipIntroTile(),
-                                  ],
-                                ),
-                        ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                        onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
-                ),
+                  const Divider(color: Colors.white12, height: 12),
+
+                  Flexible(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. Nguồn phát (nếu có nhiều server)
+                          if (widget.movie.episodes.length > 1) ...[
+                            InkWell(
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _showServerSelectionPopover(anchorContext);
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white12, width: 0.8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.dns_rounded, color: AppColors.primary, size: 15),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Nguồn phát & Máy chủ',
+                                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                          Text(
+                                            '${widget.movie.episodes[_selectedServerIndex].serverName} • ${_getServerLatencyText(_serverLatencies[_selectedServerIndex], _pingingServers.contains(_selectedServerIndex))}',
+                                            style: TextStyle(color: _getServerLatencyColor(_serverLatencies[_selectedServerIndex]), fontSize: 10.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(Icons.chevron_right_rounded, color: Colors.white54, size: 18),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          // 2. Độ phân giải (Quality)
+                          const Text('Chất lượng video', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: ['1080p FHD', '720p HD', '480p SD', 'Tự động'].map((q) {
+                              final isSel = _selectedQuality == q;
+                              final shortLabel = q == 'Tự động' ? 'Auto' : q.split(' ').first;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() => _selectedQuality = q);
+                                      setPopState(() {});
+                                      if (_isWebMode) {
+                                        int targetHeight = -1;
+                                        if (q.startsWith('1080')) targetHeight = 1080;
+                                        if (q.startsWith('720')) targetHeight = 720;
+                                        if (q.startsWith('480')) targetHeight = 480;
+                                        webSetQuality(_webPlayerId, targetHeight);
+                                      }
+                                      _showHudToast('Chất lượng: $q');
+                                    },
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 5),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSel ? AppColors.primary : Colors.white.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        shortLabel,
+                                        style: TextStyle(
+                                          color: isSel ? Colors.white : Colors.white70,
+                                          fontSize: 10.5,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // 3. Tốc độ phát (Playback Speed)
+                          Text('Tốc độ phát: ${_currentSpeed}x', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: [0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
+                              final isSel = _currentSpeed == s;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() => _currentSpeed = s);
+                                      setPopState(() {});
+                                      _setPlaybackSpeed(s);
+                                      _showHudToast('Tốc độ: ${s}x');
+                                    },
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 5),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSel ? AppColors.primary : Colors.white.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '${s}x',
+                                        style: TextStyle(
+                                          color: isSel ? Colors.white : Colors.white70,
+                                          fontSize: 10.5,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // 4. Âm thanh & Phụ đề
+                          const Text('Âm thanh & Phụ đề', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: ['Tiếng gốc (Vietsub)', 'Thuyết minh', 'Lồng tiếng'].map((t) {
+                              final isSel = _selectedAudioTrack == t;
+                              final shortLabel = t.contains('Vietsub') ? 'Vietsub' : (t.contains('Thuyết') ? 'Thuyết minh' : 'Lồng tiếng');
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() => _selectedAudioTrack = t);
+                                      setPopState(() {});
+                                      _showHudToast('Âm thanh: $t');
+                                    },
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 5),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSel ? AppColors.primary : Colors.white.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        shortLabel,
+                                        style: TextStyle(
+                                          color: isSel ? Colors.white : Colors.white70,
+                                          fontSize: 10,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // 5. Âm lượng (Volume Slider)
+                          Row(
+                            children: [
+                              IconButton(
+                                iconSize: 18,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                icon: Icon(
+                                  _isMuted || _volume == 0
+                                      ? Icons.volume_off_rounded
+                                      : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                                  color: AppColors.primary,
+                                ),
+                                onPressed: () {
+                                  _toggleMute();
+                                  setPopState(() {});
+                                },
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 2.5,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+                                    activeTrackColor: AppColors.primary,
+                                    inactiveTrackColor: Colors.white24,
+                                    thumbColor: AppColors.primary,
+                                  ),
+                                  child: Slider(
+                                    value: _isMuted ? 0.0 : _volume,
+                                    min: 0.0,
+                                    max: 1.0,
+                                    onChanged: (val) {
+                                      _setVolume(val);
+                                      setPopState(() {});
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _isMuted ? 'Mute' : '${(_volume * 100).round()}%',
+                                style: const TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const Divider(color: Colors.white12, height: 12),
+
+                          // 5. Switches (Auto next & Skip intro)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Tự động chuyển tập', style: TextStyle(color: Colors.white, fontSize: 11.5)),
+                              Transform.scale(
+                                scale: 0.75,
+                                child: Switch(
+                                  value: _autoPlayNext,
+                                  activeColor: AppColors.primary,
+                                  onChanged: (val) {
+                                    setState(() => _autoPlayNext = val);
+                                    setPopState(() {});
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Bỏ qua mở đầu (Skip Intro)', style: TextStyle(color: Colors.white, fontSize: 11.5)),
+                              Transform.scale(
+                                scale: 0.75,
+                                child: Switch(
+                                  value: _enableSkipIntro,
+                                  activeColor: AppColors.primary,
+                                  onChanged: (val) {
+                                    setState(() => _enableSkipIntro = val);
+                                    setPopState(() {});
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -716,9 +1198,9 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
-    final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
-    final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
+    final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final hasNext = curIdx != -1 && curIdx + 1 < _currentEpisodeList.length;
+    final nextEp = hasNext ? _currentEpisodeList[curIdx + 1] : null;
 
     final showNextEpPrompt = _totalDuration > 60 && (_totalDuration - _currentPosition) <= 90 && hasNext && _autoPlayNext;
 
@@ -737,7 +1219,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                   ? buildHlsVideoView(
                       videoElementId: _webPlayerId,
                       m3u8Url: _currentEpisode.linkM3u8,
-                      startPosition: widget.initialPositionSeconds.toDouble(),
+                      startPosition: _currentPosition > 0 ? _currentPosition : widget.initialPositionSeconds.toDouble(),
                       isZoom: _isZoomFit,
                     )
                   : (_nativeController != null && _nativeController!.value.isInitialized
@@ -960,7 +1442,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
             Positioned.fill(child: videoPlayerWidget),
 
             // Slide-in Episode Drawer on demand (for series)
-            if (_showEpisodeDrawer && widget.allEpisodes.length > 1)
+            if (_showEpisodeDrawer && _currentEpisodeList.length > 1)
               _buildEpisodeDrawer(),
           ],
         ),
@@ -971,11 +1453,11 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   // Slide-in Episode Drawer on demand for TV / Tablet Landscape
   Widget _buildEpisodeDrawer() {
     const chunkSize = 20;
-    final totalChunks = (widget.allEpisodes.length / chunkSize).ceil();
+    final totalChunks = (_currentEpisodeList.length / chunkSize).ceil();
     final currentChunk = _drawerChunkIndex.clamp(0, totalChunks > 0 ? totalChunks - 1 : 0);
     final startIndex = currentChunk * chunkSize;
-    final endIndex = (startIndex + chunkSize).clamp(0, widget.allEpisodes.length);
-    final displayedEpisodes = widget.allEpisodes.sublist(startIndex, endIndex);
+    final endIndex = (startIndex + chunkSize).clamp(0, _currentEpisodeList.length);
+    final displayedEpisodes = _currentEpisodeList.sublist(startIndex, endIndex);
 
     final curEpIdx = displayedEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
     final initialOffset = (curEpIdx > 3) ? (curEpIdx - 2) * 52.0 : 0.0;
@@ -1022,7 +1504,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Danh sách tập (${widget.allEpisodes.length} tập)',
+                          'Danh sách tập (${_currentEpisodeList.length} tập)',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 15,
@@ -1048,7 +1530,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                           children: List.generate(totalChunks, (c) {
                             final isChunkSelected = c == currentChunk;
                             final cStart = c * chunkSize + 1;
-                            final cEnd = ((c + 1) * chunkSize).clamp(1, widget.allEpisodes.length);
+                            final cEnd = ((c + 1) * chunkSize).clamp(1, _currentEpisodeList.length);
                             return Padding(
                               padding: const EdgeInsets.only(right: 6),
                               child: InkWell(
@@ -1160,9 +1642,9 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   // Mobile Controls Overlay: Clean Stack with Zero Collision & Netflix Vignettes
   Widget _buildMobileControlsOverlay() {
-    final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
-    final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
-    final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
+    final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final hasNext = curIdx != -1 && curIdx + 1 < _currentEpisodeList.length;
+    final nextEp = hasNext ? _currentEpisodeList[curIdx + 1] : null;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1263,7 +1745,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                               shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                             ),
                           ),
-                          if (widget.allEpisodes.length > 1 || _currentEpisode.name.isNotEmpty)
+                          if (_currentEpisodeList.length > 1 || _currentEpisode.name.isNotEmpty)
                             Text(
                               _currentEpisode.name.toLowerCase().startsWith('tập')
                                   ? _currentEpisode.name
@@ -1281,11 +1763,77 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       ),
                     ),
 
-                    // Netflix Settings / Audio / Resolution button
-                    IconButton(
-                      icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
-                      tooltip: 'Cài đặt phát & Chất lượng',
-                      onPressed: _showAudioSettingsSheet,
+                    // Server Source Switcher Pill with Real Latency Ping
+                    if (widget.movie.episodes.length > 1) ...[
+                      Builder(
+                        builder: (pillCtx) {
+                          return InkWell(
+                            onTap: () => _showServerSelectionPopover(pillCtx),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _getServerLatencyColor(_serverLatencies[_selectedServerIndex]),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: _getServerLatencyColor(_serverLatencies[_selectedServerIndex]),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _getServerLatencyText(_serverLatencies[_selectedServerIndex], _pingingServers.contains(_selectedServerIndex)),
+                                    style: TextStyle(
+                                      color: _getServerLatencyColor(_serverLatencies[_selectedServerIndex]),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 105),
+                                    child: Text(
+                                      widget.movie.episodes[_selectedServerIndex].serverName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  const Icon(Icons.arrow_drop_down_rounded, color: Colors.white70, size: 18),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+
+                    // Netflix/YouTube Settings button (Popover)
+                    Builder(
+                      builder: (settingCtx) {
+                        return IconButton(
+                          icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
+                          tooltip: 'Cài đặt phát & Chất lượng',
+                          onPressed: () => _showSettingsPopover(settingCtx),
+                        );
+                      },
                     ),
 
                     // Lock screen button
@@ -1392,7 +1940,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
             ),
 
           // 5. Floating Skip Intro Button (Netflix Style: directly above progress bar on the right)
-          if (!_isLocked && widget.allEpisodes.length > 1 && _enableSkipIntro && _currentPosition <= 120)
+          if (!_isLocked && _currentEpisodeList.length > 1 && _enableSkipIntro && _currentPosition <= 120)
             Positioned(
               bottom: 84,
               right: 20,
@@ -1520,7 +2068,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                             ],
 
                             // Series Episodes Drawer Toggle Button (Only for multi-episode series)
-                            if (widget.allEpisodes.length > 1) ...[
+                            if (_currentEpisodeList.length > 1) ...[
                               InkWell(
                                 onTap: _toggleEpisodeDrawer,
                                 borderRadius: BorderRadius.circular(8),
@@ -1538,7 +2086,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                       const Icon(Icons.video_library_rounded, color: Colors.white, size: 14),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'Tập (${widget.allEpisodes.length})',
+                                        'Tập (${_currentEpisodeList.length})',
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 11,

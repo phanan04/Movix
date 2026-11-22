@@ -23,15 +23,15 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> with SingleTickerPr
     },
     {
       'q': 'Tôi bị giật lag khi xem phim thì phải làm sao?',
-      'a': 'Bạn có thể chuyển đổi giữa các máy chủ phát (Server HLS Siêu Tốc hoặc Server Dự Phòng VIP) ở phần danh sách tập của phim, hoặc vào mục "Cá nhân" chọn "Dọn dẹp bộ nhớ đệm (Cache)".',
+      'a': 'Bạn có thể chuyển đổi giữa các máy chủ phát (Server HLS Siêu Tốc hoặc Server Dự Phòng) ở phần danh sách tập của phim, hoặc vào mục "Cá nhân" chọn "Dọn dẹp bộ nhớ đệm (Cache)".',
     },
     {
       'q': 'Làm sao để tiếp tục xem tập đang dở?',
       'a': 'Movix tự động ghi nhớ chính xác đến từng giây vị trí bạn đang xem. Bạn chỉ cần vào tab "Danh sách" -> mục "Lịch sử xem" hoặc bấm "Tiếp tục xem" tại trang chi tiết phim.',
     },
     {
-      'q': 'Gói VIP trọn đời có mất phí không?',
-      'a': 'Hiện tại tài khoản VIP trên Movix hoàn toàn miễn phí trọn đời cho tất cả thành viên Movix.',
+      'q': 'Ứng dụng xem phim có mất phí không?',
+      'a': 'Toàn bộ phim trên Movix đều hoàn toàn miễn phí chất lượng cao cho tất cả thành viên.',
     },
   ];
 

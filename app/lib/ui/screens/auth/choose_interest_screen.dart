@@ -17,7 +17,7 @@ class _ChooseInterestScreenState extends State<ChooseInterestScreen> {
     'Kinh Dị',
     'Viễn Tưởng',
     'Tình Cảm',
-    'Anime / Hoạt Hình',
+    'Hoạt Hình',
     'Cổ Trang',
     'Võ Thuật',
     'Tâm Lý',
@@ -27,9 +27,20 @@ class _ChooseInterestScreenState extends State<ChooseInterestScreen> {
     'Thể Thao',
     'Âm Nhạc',
     'Thần Thoại',
+    'Bí Ẩn',
+    'Chính Kịch',
+    'Gia Đình',
+    'Học Đường',
+    'Khoa Học',
+    'Kinh Điển',
+    'Lịch Sử',
+    'Miền Tây',
+    'Phim 18+',
+    'Phim Ngắn',
+    'Trẻ Em',
   ];
 
-  final Set<String> _selected = {'Hành Động', 'Viễn Tưởng', 'Anime / Hoạt Hình'};
+  final Set<String> _selected = {'Hành Động', 'Viễn Tưởng', 'Hoạt Hình'};
 
   void _onNext() {
     Navigator.push(

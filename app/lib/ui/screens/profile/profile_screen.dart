@@ -249,7 +249,7 @@ class ProfileScreen extends StatelessWidget {
           _buildSettingsTile(
             icon: Icons.system_update_rounded,
             title: 'Cập nhật ứng dụng',
-            trailingText: 'v1.0.0',
+            trailingText: 'v1.0.6',
             subtitle: 'Kiểm tra bản phát hành mới nhất',
             onTap: () {
               _showAppUpdateDialog(context);
@@ -439,7 +439,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _showAppUpdateDialog(BuildContext context) async {
-    const currentVersion = '1.0.5';
+    const currentVersion = '1.0.6';
 
     // 1. Hiển thị dialog đang kiểm tra
     showDialog(

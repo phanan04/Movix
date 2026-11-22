@@ -13,37 +13,82 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   void _onSignUp() async {
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
+
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập đầy đủ Email và Mật khẩu')),
+        const SnackBar(
+          content: Text('Vui lòng nhập đầy đủ Email và Mật khẩu!'),
+          backgroundColor: AppColors.primary,
+        ),
       );
       return;
     }
-    final name = email.contains('@') ? email.split('@')[0] : 'Thành viên mới';
-    await UserStorage().signInWithEmail(
-      name: name,
-      email: email,
-    );
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ChooseInterestScreen()),
+
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mật khẩu phải có độ dài tối thiểu 6 ký tự!'),
+          backgroundColor: AppColors.primary,
+        ),
       );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final displayName = name.isNotEmpty ? name : (email.contains('@') ? email.split('@')[0] : 'Thành viên Movix');
+      await UserStorage().registerAccount(
+        name: displayName,
+        email: email,
+        password: password,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đăng ký tài khoản thành công! Chào mừng $displayName'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ChooseInterestScreen()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -77,10 +122,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Đăng ký tài khoản miễn phí để lưu phim, đồng bộ tiến độ và nhận đề xuất phù hợp.',
+                'Đăng ký tài khoản để lưu danh sách phim, đồng bộ lịch sử xem riêng biệt và nhận thông báo tập mới.',
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
+
+              // Name Input
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border, width: 1),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  controller: _nameController,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: const InputDecoration(
+                    icon: Icon(Icons.person_outline_rounded, color: AppColors.textMuted, size: 20),
+                    hintText: 'Họ tên hoặc Biệt danh (tùy chọn)',
+                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
 
               // Email Input
               Container(
@@ -92,10 +159,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
                   controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: const InputDecoration(
                     icon: Icon(Icons.email_outlined, color: AppColors.textMuted, size: 20),
-                    hintText: 'Nhập địa chỉ Email',
+                    hintText: 'Nhập địa chỉ Email (VD: user@gmail.com)',
                     hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 16),
@@ -154,7 +222,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     },
                   ),
                   const Text(
-                    'Ghi nhớ đăng nhập',
+                    'Ghi nhớ đăng nhập trên thiết bị này',
                     style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -166,18 +234,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _onSignUp,
+                  onPressed: _isLoading ? null : _onSignUp,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
+                    disabledBackgroundColor: AppColors.primary.withOpacity(0.5),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(26),
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Đăng ký',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                        )
+                      : const Text(
+                          'Đăng ký tài khoản',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -244,22 +319,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildSocialCircle(IconData icon, Color color, {double iconSize = 22, VoidCallback? onTap}) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.border, width: 1),
-          ),
-          child: Center(
-            child: Icon(icon, color: color, size: iconSize),
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(26),
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.border, width: 1),
+        ),
+        child: Center(
+          child: Icon(icon, color: color, size: iconSize),
         ),
       ),
     );

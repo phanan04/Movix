@@ -18,6 +18,7 @@ class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -28,27 +29,53 @@ class _SignInScreenState extends State<SignInScreen> {
 
   void _onSignIn() async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
+
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập đầy đủ Email và Mật khẩu')),
+        const SnackBar(
+          content: Text('Vui lòng nhập đầy đủ Email và Mật khẩu!'),
+          backgroundColor: AppColors.primary,
+        ),
       );
       return;
     }
-    final name = email.contains('@') ? email.split('@')[0] : email;
-    await UserStorage().signInWithEmail(
-      name: name,
-      email: email,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đăng nhập thành công! Chào mừng $name')),
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = await UserStorage().loginAccount(
+        email: email,
+        password: password,
       );
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-        (route) => false,
-      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đăng nhập thành công! Chào mừng ${user.name}'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -97,10 +124,11 @@ class _SignInScreenState extends State<SignInScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
                   controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: const InputDecoration(
                     icon: Icon(Icons.email_outlined, color: AppColors.textMuted, size: 20),
-                    hintText: 'Email hoặc số điện thoại',
+                    hintText: 'Nhập địa chỉ Email (VD: user@gmail.com)',
                     hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 16),
@@ -188,18 +216,25 @@ class _SignInScreenState extends State<SignInScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _onSignIn,
+                  onPressed: _isLoading ? null : _onSignIn,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
+                    disabledBackgroundColor: AppColors.primary.withOpacity(0.5),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(26),
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Đăng nhập',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                        )
+                      : const Text(
+                          'Đăng nhập',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
                 ),
               ),
               const SizedBox(height: 24),

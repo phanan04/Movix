@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../cache/cache_manager.dart';
 import '../models/movie_model.dart';
+import '../services/tmdb_service.dart';
 
 class PhimApiService {
   static const String primaryApi = 'https://phimapi.com';
@@ -104,13 +105,14 @@ class PhimApiService {
     return rawItems.map((e) => MovieItem.fromJson(e)).toList();
   }
 
-  // 5. Chi tiết phim đa nguồn (PhimAPI chính + NguonC phụ)
+  // 5. Chi tiết phim đa nguồn (PhimAPI chính + NguonC phụ) tích hợp TMDB ngay từ đầu
   Future<MovieDetail> getMovieDetail(String slug) async {
     final primaryUrl = '$primaryApi/phim/$slug';
+    MovieDetail detail;
 
     try {
       final data = await _fetchWithCache(primaryUrl, maxAge: const Duration(minutes: 20));
-      return MovieDetail.fromJson(data);
+      detail = MovieDetail.fromJson(data);
     } catch (e) {
       debugPrint('Primary API error for detail: $e. Trying NguonC fallback...');
       // Fallback to NguonC
@@ -125,10 +127,31 @@ class PhimApiService {
               servers.add(EpisodeServer.fromJson(s));
             }
           }
-          return MovieDetail.fromJson(movieData, explicitEpisodes: servers);
+          detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
+        } else {
+          rethrow;
         }
+      } else {
+        rethrow;
       }
-      rethrow;
     }
+
+    // Tích hợp TMDB đồng bộ ngay khi load:
+    // Nếu có dữ liệu TMDB -> áp dụng ngay lập tức không bị delay/nhảy màn hình
+    // Nếu timeout (sau 1.5s) hoặc lỗi mạng -> tự động fallback giữ nguyên dữ liệu gốc
+    try {
+      final tmdb = await TmdbService().enrichMovie(
+        title: detail.name,
+        originName: detail.originName,
+        year: detail.year,
+      ).timeout(const Duration(milliseconds: 1500));
+      if (tmdb != null) {
+        detail = detail.copyWithTmdb(tmdb);
+      }
+    } catch (e) {
+      debugPrint('TMDB enrich timeout or error: $e. Fallback to KKPhim.');
+    }
+
+    return detail;
   }
 }

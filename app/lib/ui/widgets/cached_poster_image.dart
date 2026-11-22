@@ -28,9 +28,9 @@ class CachedPosterImage extends StatelessWidget {
 
   String _getProcessedUrl(String url) {
     if (url.isEmpty) return '';
-    // On Web, proxy through local server proxy to bypass browser canvas CORS limitations
+    // On Web, proxy all external images through server proxy to bypass browser canvas CORS limitations
     if (kIsWeb) {
-      if (url.startsWith('https://phimimg.com') || url.startsWith('http://phimimg.com')) {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
         return '/proxy-image?url=${Uri.encodeComponent(url)}';
       }
     }

@@ -135,8 +135,8 @@ class NotificationScreen extends ConsumerWidget {
                 width: 60,
                 height: 80,
                 child: CachedPosterImage(
-                  imageUrl: movie.fullPosterUrl,
-                  memCacheWidth: 120,
+                  imageUrl: movie.verticalPosterUrl,
+                  memCacheWidth: 160,
                   fit: BoxFit.cover,
                 ),
               ),

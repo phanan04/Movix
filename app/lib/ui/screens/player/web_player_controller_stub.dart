@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
-Widget buildHlsVideoView({required String videoElementId, required String m3u8Url, double startPosition = 0}) {
+Widget buildHlsVideoView({
+  required String videoElementId,
+  required String m3u8Url,
+  double startPosition = 0,
+  bool isZoom = false,
+}) {
   return const SizedBox.shrink();
 }
 

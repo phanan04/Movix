@@ -12,17 +12,18 @@ import 'ui/screens/auth/welcome_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase across all supported platforms (Web, Android, iOS, Windows)
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (e) {
-    debugPrint('Firebase initialization: $e');
-  }
+  // Tối ưu hóa bộ nhớ đệm hình ảnh (120MB, 400 ảnh) giúp cuộn mượt mà không bị reload
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 120 << 20;
+  PaintingBinding.instance.imageCache.maximumSize = 400;
 
-  // Initialize high-speed local caches in parallel
+  // Khởi động song song Firebase và hệ thống cache để tăng tốc mở app tức thì
   await Future.wait([
+    Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).catchError((e) {
+      debugPrint('Firebase initialization: $e');
+      return Firebase.app();
+    }),
     CacheManager().init(),
     UserStorage().init(),
   ]);

@@ -63,7 +63,7 @@ class _MainScreenState extends State<MainScreen> {
                 child: Container(
                   width: 3.5,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFE50914),
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.only(
                       topRight: Radius.circular(3),
                       bottomRight: Radius.circular(3),
@@ -81,7 +81,7 @@ class _MainScreenState extends State<MainScreen> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? const Color(0xFFE50914).withValues(alpha: 0.14)
+                      ? AppColors.primaryMuted
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),

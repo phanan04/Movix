@@ -444,6 +444,60 @@ class UserStorage {
     await _setActiveUser(user);
   }
 
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final user = currentUserNotifier.value;
+    if (user == null) {
+      throw 'Vui lòng đăng nhập để đổi mật khẩu!';
+    }
+    if (user.authProvider == 'google') {
+      throw 'Tài khoản đăng nhập bằng Google không sử dụng mật khẩu riêng.';
+    }
+    if (newPassword.length < 6) {
+      throw 'Mật khẩu mới phải có tối thiểu 6 ký tự!';
+    }
+
+    final trimmedEmail = user.email.toLowerCase().trim();
+    final accounts = _getRegisteredAccounts();
+    if (!accounts.containsKey(trimmedEmail)) {
+      throw 'Không tìm thấy dữ liệu tài khoản!';
+    }
+
+    final record = accounts[trimmedEmail] as Map<String, dynamic>;
+    final storedPassword = record['password']?.toString() ?? '';
+    if (storedPassword != oldPassword) {
+      throw 'Mật khẩu hiện tại không chính xác!';
+    }
+
+    // Try updating Firebase Auth password if active
+    try {
+      final curUser = FirebaseAuth.instance.currentUser;
+      if (curUser != null) {
+        await curUser.updatePassword(newPassword);
+      }
+    } catch (e) {
+      debugPrint('Firebase updatePassword warning: $e');
+    }
+
+    // Update in local accounts registry
+    accounts[trimmedEmail]['password'] = newPassword;
+    await _saveRegisteredAccounts(accounts);
+  }
+
+  Future<void> clearWatchHistory() async {
+    historyNotifier.value = [];
+    final key = _getHistoryKey();
+    await _prefs?.remove(key);
+  }
+
+  Future<void> clearMyList() async {
+    myListNotifier.value = [];
+    final key = _getMyListKey();
+    await _prefs?.remove(key);
+  }
+
   // --- MY LIST (Favorites - Per Account Scoped) ---
   void _loadMyList() {
     if (_prefs == null) return;

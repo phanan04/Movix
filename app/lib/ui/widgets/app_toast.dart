@@ -16,7 +16,7 @@ class AppToast {
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF1F222B).withValues(alpha: 0.95),
+        backgroundColor: AppColors.surfaceLight,
         elevation: 8,
         margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -34,7 +34,7 @@ class AppToast {
           children: [
             Icon(
               icon ?? (isError ? Icons.info_outline_rounded : Icons.check_circle_rounded),
-              color: isError ? AppColors.primary : const Color(0xFF4ADE80),
+              color: isError ? AppColors.primary : AppColors.success,
               size: 18,
             ),
             const SizedBox(width: 8),
@@ -43,7 +43,7 @@ class AppToast {
                 message,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),

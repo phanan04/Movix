@@ -88,13 +88,13 @@ jobs:
             ### 📦 Tải file cài đặt:
             - **Android APK**: Tải file `Movix-${{ steps.prepare_apk.outputs.raw_version }}.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
             
-            ### ✨ Tính năng & Cải tiến mới:
-            - **Trình phát HLS thuần chất lượng cao**: Điều chỉnh độ phân giải thực tế (1080p FHD, 720p HD, 480p, Auto) và chuyển đổi tỷ lệ khung hình 16:9 / Zoom tràn viền.
-            - **Tự động chuyển tập & Phím tắt**: Bổ sung phím tắt `N` (Tập tiếp), `P` (Tập trước), `Space`, các nút điều khiển trực quan.
-            - **Tự động nhảy danh sách tập**: Ngăn kéo danh sách tập tự động mở đúng tab và cuộn đến tập đang phát.
-            - **Lưu tiến trình xem (Tiếp tục xem)**: Khôi phục chính xác thời điểm xem dở, hiển thị nhãn "Tiếp tục Tập X".
-            - **Giao diện Hero Banner tối ưu**: Hiển thị hoàn hảo trên điện thoại xoay ngang (iPhone 16 landscape) và các kích cỡ màn hình khác.
-            - Hỗ trợ đăng nhập Google, lưu phim yêu thích, lọc phim theo thể loại, quốc gia, năm phát hành.
+            ### ✨ Tính năng & Cải tiến mới trong v1.0.7:
+            - **Tích hợp TMDB thời gian thực**: Tra cứu tự động bổ sung Backdrop 4K, Poster HD, Diễn viên kèm ảnh chân dung và Điểm đánh giá chuẩn xác từ The Movie Database.
+            - **Đồng nhất hệ màu (Đỏ, Trắng) & Phông chữ**: Toàn bộ nút hành động chính (Xem ngay, Tiếp tục xem, Bỏ qua mở đầu) sử dụng màu Đỏ Movix `#E50914` chuẩn thương hiệu; hệ thống chữ chuẩn hóa Be Vietnam Pro với độ tương phản cao.
+            - **Tối ưu dung lượng APK & Hiệu năng**: Kích hoạt R8 Minification và ProGuard Resource Shrinking giảm kích thước file cài đặt; khởi động song song giúp mở ứng dụng nhanh chóng; nâng cấp cache ảnh 120MB chống giật lag.
+            - **Cân đối bố cục giao diện**: Căn chỉnh màn hình chi tiết phim cân đối theo trục dọc, tối ưu hóa hiển thị trên mọi kích thước màn hình (Mobile, Tablet, Desktop, TV).
+            - **Sửa lỗi ký danh (Keystore)**: Đồng bộ release keystore thống nhất, loại bỏ triệt để lỗi xung đột gói khi nâng cấp phiên bản.
+            - **Trình phát HLS thuần & Quản lý tài khoản**: Điều chỉnh độ phân giải, lưu tiến trình xem, bảo mật và đổi mật khẩu an toàn.
           draft: false
           prerelease: false
           generate_release_notes: false

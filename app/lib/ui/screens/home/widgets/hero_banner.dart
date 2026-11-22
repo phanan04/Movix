@@ -32,6 +32,9 @@ class _HeroBannerState extends State<HeroBanner> {
         ? (screenHeight * 0.88).clamp(320.0, 380.0)
         : (isWide ? (screenHeight * 0.56).clamp(420.0, 600.0) : screenHeight * 0.48);
 
+    final double btnHeight = isShortLandscape ? 36.0 : (isWide ? 42.0 : 40.0);
+    const double btnRadius = 8.0;
+
     if (movie == null) {
       return Container(
         height: bannerHeight,
@@ -45,13 +48,11 @@ class _HeroBannerState extends State<HeroBanner> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Background Image: Dùng ảnh ngang 16:9 (posterUrl) cho màn hình rộng/TV/Landscape, poster dọc (thumbUrl) cho mobile dọc
+            // 1. Background Image: Dùng ảnh ngang 16:9 (backdropUrl) cho màn hình rộng/TV/Landscape, poster dọc (verticalPosterUrl) cho mobile dọc
             CachedPosterImage(
-              imageUrl: isWide
-                  ? movie.fullPosterUrl
-                  : (movie.fullThumbUrl.isNotEmpty ? movie.fullThumbUrl : movie.fullPosterUrl),
+              imageUrl: isWide ? movie.backdropUrl : movie.verticalPosterUrl,
               fit: BoxFit.cover,
-              alignment: isWide ? Alignment.centerRight : Alignment.topCenter,
+              alignment: isWide ? Alignment.center : Alignment.topCenter,
               memCacheWidth: 1280,
               memCacheHeight: 720,
             ),
@@ -134,24 +135,24 @@ class _HeroBannerState extends State<HeroBanner> {
                         Text(
                           '${movie.year}',
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       if (movie.quality.isNotEmpty) ...[
-                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        const Text('•', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(3),
-                            border: Border.all(color: Colors.white30, width: 0.8),
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppColors.borderLight, width: 0.8),
                           ),
                           child: Text(
                             movie.quality.toUpperCase(),
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -159,14 +160,14 @@ class _HeroBannerState extends State<HeroBanner> {
                         ),
                       ],
                       if (movie.categoryNames.isNotEmpty) ...[
-                        const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 13)),
+                        const Text('•', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                         Text(
                           movie.categoryNames.take(3).join(', '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 12.5,
-                            color: Color(0xFFB3B3B3),
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -175,13 +176,12 @@ class _HeroBannerState extends State<HeroBanner> {
                   ),
                   SizedBox(height: isShortLandscape ? 10 : 16),
 
-                  // Cụm nút hành động chuẩn Netflix: [▶ Xem ngay (Nền trắng)] + [ℹ Chi tiết] + [Lưu lại]
-                  Wrap(
-                    spacing: isShortLandscape ? 8 : 12,
-                    runSpacing: 8,
-                    alignment: isWide ? WrapAlignment.start : WrapAlignment.center,
+                  // Cụm nút hành động chuẩn Netflix: Đều chiều cao trên cùng 1 hàng
+                  Row(
+                    mainAxisSize: isWide ? MainAxisSize.min : MainAxisSize.max,
+                    mainAxisAlignment: isWide ? MainAxisAlignment.start : MainAxisAlignment.center,
                     children: [
-                      // Nút "Xem ngay" (Play) chuẩn Netflix TV: Nền trắng chữ đen
+                      // Nút "Xem ngay" (Play) chuẩn Movix: Nền Đỏ #E50914 chữ Trắng đồng nhất toàn app
                       TVFocusable(
                         onPressed: () {
                           Navigator.push(
@@ -191,18 +191,18 @@ class _HeroBannerState extends State<HeroBanner> {
                             ),
                           );
                         },
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(btnRadius),
                         child: Container(
+                          height: btnHeight,
                           padding: EdgeInsets.symmetric(
-                            horizontal: isShortLandscape ? 14 : 22,
-                            vertical: isShortLandscape ? 6 : 10,
+                            horizontal: isWide ? (isShortLandscape ? 16 : 22) : 20,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(6),
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(btnRadius),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.white.withValues(alpha: 0.2),
+                                color: AppColors.primary.withValues(alpha: 0.35),
                                 blurRadius: 10,
                                 offset: const Offset(0, 2),
                               ),
@@ -210,23 +210,25 @@ class _HeroBannerState extends State<HeroBanner> {
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.play_arrow_rounded, color: Colors.black, size: isShortLandscape ? 18 : 22),
-                              const SizedBox(width: 4),
+                              Icon(Icons.play_arrow_rounded, color: AppColors.textPrimary, size: isShortLandscape ? 18 : 22),
+                              const SizedBox(width: 5),
                               Text(
                                 'Xem ngay',
                                 style: TextStyle(
                                   fontSize: isShortLandscape ? 12.5 : 14.5,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.black,
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
+                      SizedBox(width: isShortLandscape ? 8 : 12),
 
-                      // Nút "Chi tiết" (Info)
+                      // Nút "Chi tiết" (Info): Màn dọc chỉ hiện icon trong khung vuông, Màn ngang hiện chữ + icon
                       TVFocusable(
                         onPressed: () {
                           Navigator.push(
@@ -236,36 +238,42 @@ class _HeroBannerState extends State<HeroBanner> {
                             ),
                           );
                         },
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(btnRadius),
                         child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isShortLandscape ? 12 : 18,
-                            vertical: isShortLandscape ? 6 : 10,
-                          ),
+                          height: btnHeight,
+                          width: isWide ? null : btnHeight,
+                          padding: isWide
+                              ? EdgeInsets.symmetric(horizontal: isShortLandscape ? 12 : 18)
+                              : EdgeInsets.zero,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E2028).withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.white24, width: 1),
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(btnRadius),
+                            border: Border.all(color: AppColors.borderLight, width: 1),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.info_outline_rounded, color: Colors.white, size: isShortLandscape ? 16 : 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Chi tiết',
-                                style: TextStyle(
-                                  fontSize: isShortLandscape ? 12.5 : 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
+                          child: Center(
+                            child: isWide
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.info_outline_rounded, color: AppColors.textPrimary, size: isShortLandscape ? 16 : 18),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'Chi tiết',
+                                        style: TextStyle(
+                                          fontSize: isShortLandscape ? 12.5 : 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : const Icon(Icons.info_outline_rounded, color: AppColors.textPrimary, size: 20),
                           ),
                         ),
                       ),
+                      SizedBox(width: isShortLandscape ? 8 : 12),
 
-                      // Nút "+ Danh sách" (My List)
+                      // Nút "Lưu lại" (My List): Màn dọc chỉ hiện icon trong khung vuông, Màn ngang hiện chữ + icon
                       ValueListenableBuilder<List<MovieItem>>(
                         valueListenable: _userStorage.myListNotifier,
                         builder: (context, _, __) {
@@ -274,35 +282,49 @@ class _HeroBannerState extends State<HeroBanner> {
                             onPressed: () {
                               _userStorage.toggleMyList(movie);
                             },
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(btnRadius),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              height: btnHeight,
+                              width: isWide ? null : btnHeight,
+                              padding: isWide
+                                  ? EdgeInsets.symmetric(horizontal: isShortLandscape ? 14 : 18)
+                                  : EdgeInsets.zero,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E2028).withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(6),
+                                color: inList
+                                    ? AppColors.primaryMuted
+                                    : AppColors.surfaceLight,
+                                borderRadius: BorderRadius.circular(btnRadius),
                                 border: Border.all(
-                                  color: inList ? const Color(0xFFE50914) : Colors.white24,
+                                  color: inList ? AppColors.primary : AppColors.borderLight,
                                   width: 1,
                                 ),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    inList ? Icons.check_rounded : Icons.add_rounded,
-                                    color: inList ? const Color(0xFFE50914) : Colors.white,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    inList ? 'Đã lưu' : 'Lưu lại',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: inList ? const Color(0xFFE50914) : Colors.white,
-                                    ),
-                                  ),
-                                ],
+                              child: Center(
+                                child: isWide
+                                    ? Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            inList ? Icons.check_rounded : Icons.add_rounded,
+                                            color: inList ? AppColors.primary : AppColors.textPrimary,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            inList ? 'Đã lưu' : 'Lưu lại',
+                                            style: TextStyle(
+                                              fontSize: isShortLandscape ? 12.5 : 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: inList ? AppColors.primary : AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Icon(
+                                        inList ? Icons.check_rounded : Icons.add_rounded,
+                                        color: inList ? AppColors.primary : AppColors.textPrimary,
+                                        size: 20,
+                                      ),
                               ),
                             ),
                           );

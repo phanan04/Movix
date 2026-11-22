@@ -69,8 +69,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Color(0x99181A20),
-                          Color(0xFF181A20),
+                          Color(0x990F1014),
+                          AppColors.background,
                         ],
                         stops: [0.2, 0.65, 1.0],
                       ),
@@ -154,7 +154,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),

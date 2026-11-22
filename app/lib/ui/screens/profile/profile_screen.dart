@@ -13,7 +13,6 @@ import '../auth/lets_you_in_screen.dart';
 import '../settings/edit_profile_screen.dart';
 import '../settings/notification_settings_screen.dart';
 import '../settings/security_screen.dart';
-import '../settings/language_screen.dart';
 import '../settings/help_center_screen.dart';
 import '../settings/privacy_policy_screen.dart';
 import '../../widgets/app_toast.dart';
@@ -191,13 +190,23 @@ class ProfileScreen extends StatelessWidget {
           _buildSettingsTile(
             icon: Icons.person_outline_rounded,
             title: 'Chỉnh sửa hồ sơ',
+            subtitle: 'Đổi tên hiển thị và ảnh đại diện',
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfileScreen()));
             },
           ),
           _buildSettingsTile(
+            icon: Icons.security_rounded,
+            title: 'Bảo mật & Dữ liệu',
+            subtitle: 'Đổi mật khẩu và quản lý dữ liệu xem phim',
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const SecurityScreen()));
+            },
+          ),
+          _buildSettingsTile(
             icon: Icons.notifications_none_rounded,
             title: 'Cài đặt thông báo',
+            subtitle: 'Tùy chỉnh thông báo phim mới và cập nhật',
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()));
             },
@@ -212,38 +221,19 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
           _buildSettingsTile(
-            icon: Icons.security_rounded,
-            title: 'Bảo mật & Mã PIN',
+            icon: Icons.help_outline_rounded,
+            title: 'Trung tâm trợ giúp (FAQ)',
+            subtitle: 'Câu hỏi thường gặp và hướng dẫn sử dụng',
             onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const SecurityScreen()));
-            },
-          ),
-          _buildSettingsTile(
-            icon: Icons.language_rounded,
-            title: 'Ngôn ngữ',
-            trailingText: 'Tiếng Việt',
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const LanguageScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const HelpCenterScreen()));
             },
           ),
           _buildSettingsTile(
             icon: Icons.privacy_tip_outlined,
             title: 'Chính sách quyền riêng tư',
+            subtitle: 'Bảo mật thông tin và quyền người dùng',
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()));
-            },
-          ),
-          _buildSettingsTile(
-            icon: Icons.dark_mode_outlined,
-            title: 'Chế độ tối (Dark Mode)',
-            trailingText: 'Luôn bật',
-            onTap: () {},
-          ),
-          _buildSettingsTile(
-            icon: Icons.help_outline_rounded,
-            title: 'Trung tâm trợ giúp (FAQ)',
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const HelpCenterScreen()));
             },
           ),
           _buildSettingsTile(

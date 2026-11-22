@@ -39,7 +39,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   bool _isLongPressing2X = false;
   bool _isFullScreen = false;
   double _currentSpeed = 1.0;
-  bool _isZoomFit = false;
+  bool _isZoomFit = true;
 
   String _selectedQuality = '1080p FHD';
   String _selectedAudioTrack = 'Tiếng gốc (Vietsub)';
@@ -716,8 +716,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-
     final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
     final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
     final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
@@ -728,23 +726,23 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       key: _videoPlayerKey,
       child: Container(
         color: Colors.black,
-        child: AspectRatio(
-          aspectRatio: _isZoomFit
-              ? (width / (MediaQuery.of(context).size.height > 0 ? MediaQuery.of(context).size.height : 1.0))
-              : 16 / 9,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 1. Video Element (Native or Web HLS)
-              Positioned.fill(
-                child: _isWebMode
-                    ? buildHlsVideoView(
-                        videoElementId: _webPlayerId,
-                        m3u8Url: _currentEpisode.linkM3u8,
-                        startPosition: widget.initialPositionSeconds.toDouble(),
-                      )
-                    : (_nativeController != null && _nativeController!.value.isInitialized
-                        ? FittedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Video Element (Native or Web HLS)
+            Positioned.fill(
+              child: _isWebMode
+                  ? buildHlsVideoView(
+                      videoElementId: _webPlayerId,
+                      m3u8Url: _currentEpisode.linkM3u8,
+                      startPosition: widget.initialPositionSeconds.toDouble(),
+                      isZoom: _isZoomFit,
+                    )
+                  : (_nativeController != null && _nativeController!.value.isInitialized
+                      ? Center(
+                          child: FittedBox(
                             fit: _isZoomFit ? BoxFit.cover : BoxFit.contain,
                             child: SizedBox(
                               width: _nativeController!.value.size.width > 0
@@ -755,9 +753,10 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                   : 9,
                               child: VideoPlayer(_nativeController!),
                             ),
-                          )
-                        : const Center(child: CircularProgressIndicator(color: AppColors.primary))),
-              ),
+                          ),
+                        )
+                      : const Center(child: CircularProgressIndicator(color: AppColors.primary))),
+            ),
 
               // 2. YouTube Touch Gesture Layer: Single tap toggles show/hide controls cleanly
               Positioned.fill(
@@ -925,7 +924,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
             ],
           ),
         ),
-      ),
     );
 
     // Single Unified Scaffold with Keyboard Listener for shortcuts:
@@ -959,7 +957,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
           fit: StackFit.expand,
           children: [
             // 100% Immersive Full-screen Video Player (Chuẩn Netflix)
-            Center(child: videoPlayerWidget),
+            Positioned.fill(child: videoPlayerWidget),
 
             // Slide-in Episode Drawer on demand (for series)
             if (_showEpisodeDrawer && widget.allEpisodes.length > 1)
@@ -1104,11 +1102,11 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             decoration: BoxDecoration(
                               color: isPlayingThis
-                                  ? const Color(0xFFE50914).withValues(alpha: 0.2)
-                                  : const Color(0xFF1E2028).withValues(alpha: 0.4),
+                                  ? AppColors.primaryMuted
+                                  : AppColors.surfaceLight.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isPlayingThis ? const Color(0xFFE50914) : Colors.transparent,
+                                color: isPlayingThis ? AppColors.primary : Colors.transparent,
                                 width: 1.2,
                               ),
                             ),
@@ -1116,7 +1114,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                               children: [
                                 Icon(
                                   isPlayingThis ? Icons.play_arrow_rounded : Icons.play_circle_outline_rounded,
-                                  color: isPlayingThis ? const Color(0xFFE50914) : Colors.white60,
+                                  color: isPlayingThis ? AppColors.primary : AppColors.textSecondary,
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
@@ -1126,7 +1124,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: isPlayingThis ? const Color(0xFFE50914) : Colors.white,
+                                      color: isPlayingThis ? AppColors.primary : AppColors.textPrimary,
                                       fontSize: 13.5,
                                       fontWeight: isPlayingThis ? FontWeight.bold : FontWeight.w500,
                                     ),
@@ -1136,7 +1134,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFE50914),
+                                      color: AppColors.primary,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: const Text(
@@ -1163,7 +1161,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   // Mobile Controls Overlay: Clean Stack with Zero Collision & Netflix Vignettes
   Widget _buildMobileControlsOverlay() {
     final curIdx = widget.allEpisodes.indexWhere((e) => e.slug == _currentEpisode.slug);
-    final hasPrev = curIdx > 0;
     final hasNext = curIdx != -1 && curIdx + 1 < widget.allEpisodes.length;
     final nextEp = hasNext ? widget.allEpisodes[curIdx + 1] : null;
 
@@ -1274,7 +1271,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Color(0xFFE50914),
+                                color: AppColors.primary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 shadows: [Shadow(color: Colors.black, blurRadius: 4)],
@@ -1313,23 +1310,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Prev Episode Shortcut (Center Controls)
-                  if (hasPrev) ...[
-                    InkWell(
-                      onTap: _playPrevEpisode,
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 28),
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                  ],
-
                   // Rewind 10s
                   InkWell(
                     onTap: _onDoubleTapLeft,
@@ -1343,9 +1323,9 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       child: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 36),
                     ),
                   ),
-                  const SizedBox(width: 28),
+                  const SizedBox(width: 32),
 
-                  // Center Play/Pause 62px glass circular button
+                  // Center Play/Pause 68px glass circular button
                   InkWell(
                     onTap: _togglePlayPause,
                     borderRadius: BorderRadius.circular(36),
@@ -1371,7 +1351,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       ),
                     ),
                   ),
-                  const SizedBox(width: 28),
+                  const SizedBox(width: 32),
 
                   // Forward 10s
                   InkWell(
@@ -1386,23 +1366,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       child: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 36),
                     ),
                   ),
-
-                  // Next Episode Shortcut (Center Controls)
-                  if (hasNext) ...[
-                    const SizedBox(width: 20),
-                    InkWell(
-                      onTap: _playNextEpisode,
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 28),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             )
@@ -1439,7 +1402,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE50914),
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
@@ -1480,8 +1443,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       // Red Scrubber Slider
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          thumbColor: const Color(0xFFE50914),
-                          activeTrackColor: const Color(0xFFE50914),
+                          thumbColor: AppColors.primary,
+                          activeTrackColor: AppColors.primary,
                           inactiveTrackColor: Colors.white24,
                           trackHeight: 3.5,
                           thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
@@ -1565,7 +1528,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: _showEpisodeDrawer
-                                        ? const Color(0xFFE50914)
+                                        ? AppColors.primary
                                         : Colors.white.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -1645,16 +1608,6 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                               ),
                               const SizedBox(width: 4),
                             ],
-
-                            // Nút cài đặt (chất lượng, tỷ lệ, âm thanh...): trên màn hẹp gom hết vào đây
-                            IconButton(
-                              iconSize: 20,
-                              padding: const EdgeInsets.symmetric(horizontal: 2),
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                              icon: const Icon(Icons.tune_rounded, color: Colors.white),
-                              tooltip: 'Cài đặt phát & Chất lượng',
-                              onPressed: _showAudioSettingsSheet,
-                            ),
                           ],
                         );
                       }),

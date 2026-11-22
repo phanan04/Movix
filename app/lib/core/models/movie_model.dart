@@ -1,3 +1,5 @@
+import '../services/tmdb_service.dart';
+
 class MovieCategoryItem {
   final String id;
   final String name;
@@ -143,6 +145,18 @@ class MovieItem {
     return 'https://phimimg.com/$posterUrl';
   }
 
+  /// Ảnh nền ngang (Backdrop 16:9) chuẩn cho Hero Banner, Chi tiết phim và Player
+  String get backdropUrl {
+    if (fullThumbUrl.isNotEmpty) return fullThumbUrl;
+    return fullPosterUrl;
+  }
+
+  /// Ảnh áp phích dọc (Poster 2:3) chuẩn cho Poster card, danh sách phim
+  String get verticalPosterUrl {
+    if (fullPosterUrl.isNotEmpty) return fullPosterUrl;
+    return fullThumbUrl;
+  }
+
   factory MovieItem.fromJson(Map<String, dynamic> json) {
     List<String> categories = [];
     if (json['category'] is List) {
@@ -216,6 +230,11 @@ class MovieDetail {
   final List<String> directors;
   final List<MovieCategoryItem> categories;
   final List<EpisodeServer> episodes;
+  final String? tmdbBackdropUrl;
+  final String? tmdbPosterUrl;
+  final double tmdbVoteAverage;
+  final int tmdbVoteCount;
+  final List<TmdbCast> tmdbCast;
 
   const MovieDetail({
     required this.id,
@@ -236,7 +255,40 @@ class MovieDetail {
     required this.directors,
     required this.categories,
     required this.episodes,
+    this.tmdbBackdropUrl,
+    this.tmdbPosterUrl,
+    this.tmdbVoteAverage = 0.0,
+    this.tmdbVoteCount = 0,
+    this.tmdbCast = const [],
   });
+
+  MovieDetail copyWithTmdb(TmdbMovieData tmdb) {
+    return MovieDetail(
+      id: id,
+      name: name,
+      originName: originName,
+      slug: slug,
+      type: type,
+      thumbUrl: thumbUrl,
+      posterUrl: posterUrl,
+      time: time,
+      episodeCurrent: episodeCurrent,
+      episodeTotal: episodeTotal,
+      quality: quality,
+      lang: lang,
+      year: year,
+      content: content,
+      actors: actors,
+      directors: directors,
+      categories: categories,
+      episodes: episodes,
+      tmdbBackdropUrl: tmdb.backdropUrl,
+      tmdbPosterUrl: tmdb.posterUrl,
+      tmdbVoteAverage: tmdb.voteAverage,
+      tmdbVoteCount: tmdb.voteCount,
+      tmdbCast: tmdb.cast,
+    );
+  }
 
   String get fullThumbUrl {
     if (thumbUrl.isEmpty) return '';
@@ -253,6 +305,27 @@ class MovieDetail {
     }
     return 'https://phimimg.com/$posterUrl';
   }
+
+  /// Ảnh nền ngang (Backdrop 16:9) chuẩn cho Hero Banner, Chi tiết phim và Player
+  String get backdropUrl {
+    if (tmdbBackdropUrl != null && tmdbBackdropUrl!.isNotEmpty) {
+      return tmdbBackdropUrl!;
+    }
+    if (fullThumbUrl.isNotEmpty) return fullThumbUrl;
+    return fullPosterUrl;
+  }
+
+  /// Ảnh áp phích dọc (Poster 2:3) chuẩn cho Poster card, danh sách phim
+  String get verticalPosterUrl {
+    if (tmdbPosterUrl != null && tmdbPosterUrl!.isNotEmpty) {
+      return tmdbPosterUrl!;
+    }
+    if (fullPosterUrl.isNotEmpty) return fullPosterUrl;
+    return fullThumbUrl;
+  }
+
+  double get voteAverage => tmdbVoteAverage > 0 ? tmdbVoteAverage : 0.0;
+  int get voteCount => tmdbVoteCount;
 
   factory MovieDetail.fromJson(Map<String, dynamic> json, {List<EpisodeServer>? explicitEpisodes}) {
     final movie = json['movie'] ?? json;

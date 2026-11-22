@@ -178,12 +178,12 @@ class _EpisodeGridWidgetState extends State<EpisodeGridWidget> {
                       decoration: BoxDecoration(
                         color: isCurrent
                             ? AppColors.primary
-                            : const Color(0xFF1E232E), // Dark slate matching reference
+                            : AppColors.surfaceLight,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: isCurrent
                               ? AppColors.primary
-                              : Colors.white.withValues(alpha: 0.08),
+                              : AppColors.borderLight,
                           width: 1,
                         ),
                         boxShadow: isCurrent
@@ -204,7 +204,7 @@ class _EpisodeGridWidgetState extends State<EpisodeGridWidget> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                          color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.9),
+                          color: isCurrent ? AppColors.textPrimary : AppColors.textSecondary,
                         ),
                       ),
                     ),

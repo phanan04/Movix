@@ -23,7 +23,7 @@ class RatingBadge extends StatelessWidget {
       child: Text(
         rating,
         style: const TextStyle(
-          color: Colors.white,
+          color: AppColors.textPrimary,
           fontSize: 10,
           fontWeight: FontWeight.bold,
         ),

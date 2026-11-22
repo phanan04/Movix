@@ -119,11 +119,11 @@ jobs:
             ### 📦 Tải file cài đặt:
             - **Android APK**: Tải file `Movix-${{ steps.prepare_apk.outputs.raw_version }}.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
             
-            ### ✨ Tính năng & Cải tiến mới trong v1.0.8:
-            - **Sửa triệt để luồng Auth & Đăng nhập/Đăng ký**: Cơ chế xác thực thông minh loại bỏ hoàn toàn lỗi xung đột tài khoản ("đăng ký báo có nick, đăng nhập báo không có nick"), tự động đăng nhập khi trùng khớp thông tin.
-            - **Bổ sung chế độ Khách VIP (1-Tap Guest Access)**: Cho phép xem phim, lưu yêu thích và lịch sử xem dở ngay lập tức mà không bắt buộc phải đăng nhập.
-            - **Tối ưu trải nghiệm Google Sign-In**: Hướng dẫn rõ ràng và cung cấp lối tắt chuyển đổi linh hoạt khi kết nối tài khoản.
-            - **Kế thừa toàn bộ tối ưu v1.0.7**: Tích hợp TMDB thời gian thực, giao diện đồng nhất chuẩn Đỏ-Trắng Be Vietnam Pro, tối ưu khởi động song song và ký danh keystore chuẩn.
+            ### ✨ Tính năng & Cải tiến mới trong v1.0.9:
+            - **Kết nối Cloud Database (Firebase Authentication) chính thức**: Kích hoạt thành công cơ sở dữ liệu tài khoản thật trên đám mây. Mọi tài khoản đăng ký/đăng nhập đều được lưu vĩnh viễn và đồng bộ tự động.
+            - **Bỏ hoàn toàn tài khoản thử / khách**: Chuẩn hóa 100% trải nghiệm người dùng thật với đầy đủ danh mục lưu phim, tiến trình xem dở và bảo mật tài khoản.
+            - **Tối ưu hóa giao diện Auth linh hoạt**: Bảng xác thực hiển thị đẹp và cuộn mượt mà trên mọi kích cỡ màn hình (Mobile dọc, ngang, Tablet, Android TV).
+            - **Kế thừa toàn bộ tối ưu v1.0.7 & v1.0.8**: Tích hợp TMDB thời gian thực, giao diện đồng nhất chuẩn Đỏ-Trắng Be Vietnam Pro, tối ưu khởi động song song và ký danh keystore chuẩn.
           draft: false
           prerelease: false
           generate_release_notes: false

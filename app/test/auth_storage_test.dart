@@ -10,13 +10,6 @@ void main() {
     await UserStorage().init();
   });
 
-  test('loginAsGuest sets active guest user', () async {
-    final user = await UserStorage().loginAsGuest();
-    expect(user.authProvider, 'guest');
-    expect(user.name, 'Khách VIP');
-    expect(UserStorage().currentUserNotifier.value?.name, 'Khách VIP');
-  });
-
   test('registerAccount creates and stores account', () async {
     final user = await UserStorage().registerAccount(
       name: 'Nguyen Van A',

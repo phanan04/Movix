@@ -121,16 +121,17 @@ class GoogleAuthService {
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
 
-        // Show a polished, helpful modal with fallback options
+        // Show a polished, user-friendly modal with fallback options
         showModalBottomSheet(
           context: context,
+          isScrollControlled: true,
           backgroundColor: AppColors.surface,
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           builder: (modalCtx) {
             return SafeArea(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -143,21 +144,21 @@ class GoogleAuthService {
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16),
                     Container(
-                      width: 56,
-                      height: 56,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
                         color: AppColors.primary.withOpacity(0.15),
                         shape: BoxShape.circle,
                       ),
                       child: const Center(
-                        child: Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 30),
+                        child: Icon(Icons.lock_person_outlined, color: AppColors.primary, size: 28),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     const Text(
-                      'Đăng nhập Google trên Android',
+                      'Đăng nhập tài khoản',
                       style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 18,
@@ -166,7 +167,7 @@ class GoogleAuthService {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Google Sign-In trên ứng dụng Android đang chờ bổ sung mã SHA-1 của bản release trên Firebase Console.\n\nBạn có thể đăng nhập tức thì bằng Email hoặc tiếp tục xem phim ngay với tư cách Khách VIP!',
+                      'Tính năng đăng nhập nhanh qua Google hiện chưa được kích hoạt trên bản cài đặt này.\n\nBạn có thể đăng nhập bằng Email & Mật khẩu hoặc bấm "Trải nghiệm ngay" để thưởng thức phim tức thì!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: AppColors.textSecondary,
@@ -174,7 +175,7 @@ class GoogleAuthService {
                         height: 1.45,
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                     // Option 1: Login with Email
                     SizedBox(
                       width: double.infinity,

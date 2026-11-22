@@ -200,33 +200,6 @@ class GoogleAuthService {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Option 2: Guest VIP
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 18),
-                        label: const Text(
-                          'Trải nghiệm ngay (Khách VIP)',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.border, width: 1.2),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        ),
-                        onPressed: () async {
-                          Navigator.pop(modalCtx);
-                          await UserStorage().loginAsGuest();
-                          if (context.mounted) {
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(builder: (context) => const MainScreen()),
-                              (route) => false,
-                            );
-                          }
-                        },
-                      ),
-                    ),
                   ],
                 ),
               ),

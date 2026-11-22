@@ -329,29 +329,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-
-              // Guest VIP option
-              Center(
-                child: TextButton.icon(
-                  onPressed: () async {
-                    await UserStorage().loginAsGuest();
-                    if (context.mounted) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const MainScreen()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.rocket_launch_rounded, color: AppColors.textMuted, size: 16),
-                  label: const Text(
-                    'Bỏ qua đăng nhập • Trải nghiệm ngay (Khách VIP)',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 24),
             ],
           ),
         ),

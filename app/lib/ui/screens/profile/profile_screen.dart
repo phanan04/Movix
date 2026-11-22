@@ -436,7 +436,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _showAppUpdateDialog(BuildContext context) async {
-    const currentVersion = '1.0.0';
+    const currentVersion = '1.0.2';
 
     // 1. Hiển thị dialog đang kiểm tra
     showDialog(

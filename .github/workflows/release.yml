@@ -65,7 +65,8 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           else
-            echo "tag_name=v1.0.0" >> $GITHUB_OUTPUT
+            VERSION=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+            echo "tag_name=v${VERSION}" >> $GITHUB_OUTPUT
           fi
 
       - name: Create or Update GitHub Release
@@ -76,17 +77,20 @@ jobs:
           files: ${{ steps.locate_apk.outputs.apk_path }}
           tag_name: ${{ steps.determine_tag.outputs.tag_name }}
           name: Movix Release ${{ steps.determine_tag.outputs.tag_name }}
+          make_latest: true
           body: |
             ## Movix - Ứng dụng xem phim trực tuyến hiện đại (Flutter)
             
             ### 📦 Tải file cài đặt:
             - **Android APK**: Tải file `app-release.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
             
-            ### ✨ Tính năng:
-            - Đăng nhập tài khoản Google (Firebase Authentication).
-            - Trình phát video chuyên nghiệp: cử chỉ chạm đúp tua, nhấn giữ x2 tốc độ, bỏ qua intro, chuyển tập tự động.
-            - Hỗ trợ đa máy chủ HLS Siêu Tốc & Dự Phòng.
-            - Giao diện Dark theme Movix cao cấp.
+            ### ✨ Tính năng & Cải tiến mới:
+            - **Trình phát HLS thuần chất lượng cao**: Điều chỉnh độ phân giải thực tế (1080p FHD, 720p HD, 480p, Auto) và chuyển đổi tỷ lệ khung hình 16:9 / Zoom tràn viền.
+            - **Tự động chuyển tập & Phím tắt**: Bổ sung phím tắt `N` (Tập tiếp), `P` (Tập trước), `Space`, các nút điều khiển trực quan.
+            - **Tự động nhảy danh sách tập**: Ngăn kéo danh sách tập tự động mở đúng tab và cuộn đến tập đang phát.
+            - **Lưu tiến trình xem (Tiếp tục xem)**: Khôi phục chính xác thời điểm xem dở, hiển thị nhãn "Tiếp tục Tập X".
+            - **Giao diện Hero Banner tối ưu**: Hiển thị hoàn hảo trên điện thoại xoay ngang (iPhone 16 landscape) và các kích cỡ màn hình khác.
+            - Hỗ trợ đăng nhập Google, lưu phim yêu thích, lọc phim theo thể loại, quốc gia, năm phát hành.
           draft: false
           prerelease: false
           generate_release_notes: false

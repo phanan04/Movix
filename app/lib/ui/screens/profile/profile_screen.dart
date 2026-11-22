@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/cache/cache_manager.dart';
 import '../../../core/cache/user_storage.dart';
@@ -436,7 +439,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _showAppUpdateDialog(BuildContext context) async {
-    const currentVersion = '1.0.4';
+    const currentVersion = '1.0.5';
 
     // 1. Hiển thị dialog đang kiểm tra
     showDialog(
@@ -599,10 +602,13 @@ class ProfileScreen extends StatelessWidget {
                 ElevatedButton(
                   onPressed: () async {
                     Navigator.pop(dialogCtx);
-                    final targetUrl = (hasNewUpdate && apkDownloadUrl != null) ? apkDownloadUrl : htmlUrl;
-                    final uri = Uri.parse(targetUrl);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (hasNewUpdate && apkDownloadUrl != null) {
+                      _downloadAndInstallApk(context, apkDownloadUrl, tagName);
+                    } else {
+                      final uri = Uri.parse(htmlUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -611,7 +617,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: Text(
                     hasNewUpdate
-                        ? (apkDownloadUrl != null ? 'Tải APK ngay' : 'Xem bản phát hành')
+                        ? (apkDownloadUrl != null ? 'Cập nhật ngay' : 'Xem bản phát hành')
                         : 'Xem trên GitHub',
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
@@ -625,6 +631,137 @@ class ProfileScreen extends StatelessWidget {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         AppToast.show(context, 'Không thể kiểm tra cập nhật. Vui lòng kiểm tra kết nối mạng.');
+      }
+    }
+  }
+
+  // Cập nhật ứng dụng trực tiếp trên thiết bị (In-App APK Download & Install)
+  Future<void> _downloadAndInstallApk(
+    BuildContext context,
+    String downloadUrl,
+    String tagName,
+  ) async {
+    if (kIsWeb) {
+      final uri = Uri.parse(downloadUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    final progressNotifier = ValueNotifier<double>(0.0);
+    final statusNotifier = ValueNotifier<String>('Đang chuẩn bị tải...');
+    final cancelToken = CancelToken();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlCtx) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.downloading_rounded, color: AppColors.primary, size: 28),
+              SizedBox(width: 10),
+              Text(
+                'Đang cập nhật Movix...',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Đang tải gói cài đặt $tagName trực tiếp về máy...',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              ValueListenableBuilder<double>(
+                valueListenable: progressNotifier,
+                builder: (context, progress, _) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      backgroundColor: AppColors.surfaceLight,
+                      color: AppColors.primary,
+                      minHeight: 8,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              ValueListenableBuilder<String>(
+                valueListenable: statusNotifier,
+                builder: (context, status, _) {
+                  return Text(
+                    status,
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                cancelToken.cancel();
+                Navigator.of(dlCtx).pop();
+              },
+              child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+          ],
+        );
+      },
+    );
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final cleanTag = tagName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+      final savePath = '${tempDir.path}/Movix_$cleanTag.apk';
+
+      final dio = Dio();
+      await dio.download(
+        downloadUrl,
+        savePath,
+        cancelToken: cancelToken,
+        onReceiveProgress: (received, total) {
+          if (total > 0) {
+            final progress = received / total;
+            progressNotifier.value = progress;
+            final mbReceived = (received / (1024 * 1024)).toStringAsFixed(1);
+            final mbTotal = (total / (1024 * 1024)).toStringAsFixed(1);
+            final percent = (progress * 100).toInt();
+            statusNotifier.value = '$mbReceived MB / $mbTotal MB ($percent%)';
+          }
+        },
+      );
+
+      // Đóng popup tiến trình tải
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // Tự động mở trình cài đặt gói Android của hệ thống (Package Installer)
+      final result = await OpenFilex.open(savePath, type: 'application/vnd.android.package-archive');
+      if (result.type != ResultType.done && context.mounted) {
+        AppToast.show(context, 'Mở gói cài đặt: ${result.message}', icon: Icons.info_outline);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        if (cancelToken.isCancelled) {
+          AppToast.show(context, 'Đã hủy tải bản cập nhật');
+        } else {
+          AppToast.show(context, 'Tải trực tiếp thất bại, chuyển sang trình duyệt');
+          final uri = Uri.parse(downloadUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        }
       }
     }
   }

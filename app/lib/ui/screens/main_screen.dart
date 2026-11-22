@@ -141,32 +141,16 @@ class _MainScreenState extends State<MainScreen> {
         right: false,
         child: Column(
           children: [
-            // 1. TOP: Logo chữ 'M' màu đỏ
+            // 1. TOP: Logo Movix điện ảnh
             Padding(
               padding: const EdgeInsets.only(top: 16),
-              child: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE50914),
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFE50914).withValues(alpha: 0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Center(
-                  child: Text(
-                    'M',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 42,
+                  height: 42,
+                  fit: BoxFit.cover,
                 ),
               ),
             ),

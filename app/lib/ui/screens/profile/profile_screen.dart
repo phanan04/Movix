@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/cache/cache_manager.dart';
 import '../../../core/cache/user_storage.dart';
@@ -236,13 +237,19 @@ class ProfileScreen extends StatelessWidget {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()));
             },
           ),
-          _buildSettingsTile(
-            icon: Icons.system_update_rounded,
-            title: 'Cập nhật ứng dụng',
-            trailingText: 'v1.0.6',
-            subtitle: 'Kiểm tra bản phát hành mới nhất',
-            onTap: () {
-              _showAppUpdateDialog(context);
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.data?.version ?? '1.1.0';
+              return _buildSettingsTile(
+                icon: Icons.system_update_rounded,
+                title: 'Cập nhật ứng dụng',
+                trailingText: 'v$version',
+                subtitle: 'Kiểm tra bản phát hành mới nhất',
+                onTap: () {
+                  _showAppUpdateDialog(context, version);
+                },
+              );
             },
           ),
           ValueListenableBuilder<UserModel?>(
@@ -428,8 +435,14 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _showAppUpdateDialog(BuildContext context) async {
-    const currentVersion = '1.0.6';
+  Future<void> _showAppUpdateDialog(BuildContext context, [String? appVersion]) async {
+    String currentVersion = appVersion ?? '1.1.0';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      currentVersion = info.version;
+    } catch (_) {}
+
+    if (!context.mounted) return;
 
     // 1. Hiển thị dialog đang kiểm tra
     showDialog(

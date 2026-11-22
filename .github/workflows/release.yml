@@ -119,11 +119,11 @@ jobs:
             ### 📦 Tải file cài đặt:
             - **Android APK**: Tải file `Movix-${{ steps.prepare_apk.outputs.raw_version }}.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
             
-            ### ✨ Tính năng & Cải tiến mới trong v1.0.9:
-            - **Kết nối Cloud Database (Firebase Authentication) chính thức**: Kích hoạt thành công cơ sở dữ liệu tài khoản thật trên đám mây. Mọi tài khoản đăng ký/đăng nhập đều được lưu vĩnh viễn và đồng bộ tự động.
-            - **Bỏ hoàn toàn tài khoản thử / khách**: Chuẩn hóa 100% trải nghiệm người dùng thật với đầy đủ danh mục lưu phim, tiến trình xem dở và bảo mật tài khoản.
-            - **Tối ưu hóa giao diện Auth linh hoạt**: Bảng xác thực hiển thị đẹp và cuộn mượt mà trên mọi kích cỡ màn hình (Mobile dọc, ngang, Tablet, Android TV).
-            - **Kế thừa toàn bộ tối ưu v1.0.7 & v1.0.8**: Tích hợp TMDB thời gian thực, giao diện đồng nhất chuẩn Đỏ-Trắng Be Vietnam Pro, tối ưu khởi động song song và ký danh keystore chuẩn.
+            ### ✨ Tính năng & Cải tiến mới trong v1.1.0:
+            - **Đồng bộ phiên bản động theo thời gian thực (Dynamic Version Sync)**: Ứng dụng tự động đọc chính xác số phiên bản thực tế cài đặt trên thiết bị (`v1.1.0`), loại bỏ tình trạng hiển thị lệch số phiên bản cũ trong màn hình Cá nhân & Cài đặt.
+            - **Kết nối Cloud Database (Firebase Authentication) chính thức**: Hệ thống tài khoản người dùng thật được lưu trữ và bảo mật trực tiếp trên đám mây của Google Firebase.
+            - **Chuẩn hóa 100% người dùng thật**: Bỏ hoàn toàn tài khoản thử / khách, đồng bộ danh sách phim yêu thích và tiến trình xem dở vĩnh viễn.
+            - **Tối ưu trải nghiệm màn hình ngang & đa thiết bị**: Hộp thoại đăng nhập và chi tiết phim tự động căn chỉnh và cuộn mượt mà trên điện thoại xoay ngang, máy tính bảng và Android TV.
           draft: false
           prerelease: false
           generate_release_notes: false

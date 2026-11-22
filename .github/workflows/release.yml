@@ -42,6 +42,7 @@ jobs:
       - name: Configure Android Signing & Keystore
         run: |
           mkdir -p app/android/app/keystore
+          mkdir -p app/android/keystore
           # Kiểm tra nếu keystore movix.jks chưa có alias movix thì tự động tạo chuẩn bằng keytool
           if [ ! -f app/android/app/keystore/movix.jks ] || ! keytool -list -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix > /dev/null 2>&1; then
             echo "Generating valid release keystore with alias movix..."
@@ -57,6 +58,7 @@ jobs:
               -dname "CN=Movix, OU=TwoPhim, O=Movix, C=VN" \
               -storetype PKCS12
           fi
+          cp -f app/android/app/keystore/movix.jks app/android/keystore/movix.jks
           echo "Verifying keystore contents:"
           keytool -list -v -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix
 

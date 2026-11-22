@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -26,15 +29,22 @@ android {
     }
 
     val keystorePropertiesFile = rootProject.file("key.properties")
-    val keystoreProperties = java.util.Properties()
+    val keystoreProperties = Properties()
     if (keystorePropertiesFile.exists()) {
-        keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
     }
 
     signingConfigs {
         create("release") {
-            val keystorePath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
-            val keystoreFile = file(keystorePath)
+            val rawPath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
+            val keystoreFile = if (file(rawPath).exists()) {
+                file(rawPath)
+            } else if (file("keystore/movix.jks").exists()) {
+                file("keystore/movix.jks")
+            } else {
+                rootProject.file("app/keystore/movix.jks")
+            }
+
             if (keystoreFile.exists()) {
                 keyAlias = keystoreProperties.getProperty("keyAlias") ?: "movix"
                 keyPassword = keystoreProperties.getProperty("keyPassword") ?: "movix123456"
@@ -46,8 +56,15 @@ android {
 
     buildTypes {
         release {
-            val keystorePath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
-            val keystoreFile = file(keystorePath)
+            val rawPath = keystoreProperties.getProperty("storeFile") ?: "keystore/movix.jks"
+            val keystoreFile = if (file(rawPath).exists()) {
+                file(rawPath)
+            } else if (file("keystore/movix.jks").exists()) {
+                file("keystore/movix.jks")
+            } else {
+                rootProject.file("app/keystore/movix.jks")
+            }
+
             if (keystoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             } else {

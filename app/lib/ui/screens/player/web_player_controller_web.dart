@@ -61,7 +61,7 @@ Widget buildHlsVideoView({
   required String videoElementId,
   required String m3u8Url,
   double startPosition = 0,
-  bool isZoom = false,
+  String initialFit = 'contain',
 }) {
   if (!_registeredPlayerViews.contains(videoElementId)) {
     ui_web.platformViewRegistry.registerViewFactory(
@@ -71,7 +71,7 @@ Widget buildHlsVideoView({
         video.id = videoElementId;
         video.style.width = '100%';
         video.style.height = '100%';
-        video.style.objectFit = isZoom ? 'cover' : 'contain';
+        video.style.objectFit = initialFit;
         video.style.backgroundColor = 'black';
         video.style.pointerEvents = 'none'; // Flutter receives all gestures on top!
         video.setAttribute('playsinline', 'true');

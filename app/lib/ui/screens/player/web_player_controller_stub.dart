@@ -4,7 +4,7 @@ Widget buildHlsVideoView({
   required String videoElementId,
   required String m3u8Url,
   double startPosition = 0,
-  bool isZoom = false,
+  String initialFit = 'contain',
 }) {
   return const SizedBox.shrink();
 }

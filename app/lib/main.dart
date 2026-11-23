@@ -28,6 +28,12 @@ void main() async {
     UserStorage().init(),
   ]);
 
+  // Khóa cố định màn hình dọc cho điện thoại ngoài Player
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   // Set system UI overlay style for seamless edge-to-edge dark immersion
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

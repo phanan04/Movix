@@ -9,7 +9,6 @@ import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
 import '../../../core/network/ping_helper.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../widgets/episode_grid_widget.dart';
 import 'web_player_controller.dart';
 
 enum AspectRatioMode {
@@ -55,12 +54,21 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   bool _isLongPressing2X = false;
   bool _isFullScreen = false;
   double _currentSpeed = 1.0;
-  AspectRatioMode _aspectRatioMode = AspectRatioMode.fillScreen;
+  AspectRatioMode _aspectRatioMode = AspectRatioMode.fit169;
+
+  // 2-Finger Pinch to Zoom & Pan Offset
+  double _customScale = 1.0;
+  double _baseScale = 1.0;
+  Offset _customOffset = Offset.zero;
+  Offset _lastFocalPoint = Offset.zero;
 
   String get _aspectRatioLabel {
+    if (_customScale > 1.05) {
+      return '${(_customScale * 100).round()}%';
+    }
     switch (_aspectRatioMode) {
       case AspectRatioMode.fit169:
-        return '16:9';
+        return '16:9 Gốc';
       case AspectRatioMode.fillScreen:
         return 'Tràn viền';
       case AspectRatioMode.zoomCinematic:
@@ -125,12 +133,11 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     // Đo độ trễ thực ms đến tất cả máy chủ phát (KKPhim, VSMov,...)
     _measureAllServerLatencies();
 
-    // Cho phép xoay linh hoạt (ngang toàn màn hình, dọc hiển thị player 16:9 + thông tin tập)
+    // Luôn khóa xoay ngang toàn màn hình (Landscape) khi mở Player
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
-        DeviceOrientation.portraitUp,
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
@@ -336,6 +343,71 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     _setPlaybackSpeed(_currentSpeed);
   }
 
+  // --- CỬ CHỈ 2 NGÓN TAY: PINCH-TO-ZOOM & PAN KÉO NÂNG PHỤ ĐỀ ---
+  void _onPinchScaleStart(ScaleStartDetails details) {
+    if (_isLocked) return;
+    _baseScale = _customScale;
+    _lastFocalPoint = details.focalPoint;
+  }
+
+  void _onPinchScaleUpdate(ScaleUpdateDetails details) {
+    if (_isLocked) return;
+    if (details.pointerCount >= 2) {
+      // 2 ngón tay chụm lại hoặc banh ra: Phóng to / Thu nhỏ tùy thích
+      final newScale = (_baseScale * details.scale).clamp(1.0, 3.5);
+      final delta = details.focalPoint - _lastFocalPoint;
+      _lastFocalPoint = details.focalPoint;
+
+      setState(() {
+        _customScale = newScale;
+        if (_customScale > 1.0) {
+          final size = MediaQuery.of(context).size;
+          final maxPanX = (size.width * (_customScale - 1.0)) / 2;
+          final maxPanY = (size.height * (_customScale - 1.0)) / 2;
+          _customOffset = Offset(
+            (_customOffset.dx + delta.dx).clamp(-maxPanX, maxPanX),
+            (_customOffset.dy + delta.dy).clamp(-maxPanY, maxPanY),
+          );
+        } else {
+          _customOffset = Offset.zero;
+        }
+      });
+      _showHudToast('Thu phóng: ${(_customScale * 100).round()}%');
+      _resetControlsTimer();
+    } else if (_customScale > 1.05) {
+      // Khi đã phóng to: Cho phép dùng 1 ngón tay vuốt trượt để dịch chuyển phụ đề lên/xuống vừa tầm mắt
+      final delta = details.focalPoint - _lastFocalPoint;
+      _lastFocalPoint = details.focalPoint;
+
+      setState(() {
+        final size = MediaQuery.of(context).size;
+        final maxPanX = (size.width * (_customScale - 1.0)) / 2;
+        final maxPanY = (size.height * (_customScale - 1.0)) / 2;
+        _customOffset = Offset(
+          (_customOffset.dx + delta.dx).clamp(-maxPanX, maxPanX),
+          (_customOffset.dy + delta.dy).clamp(-maxPanY, maxPanY),
+        );
+      });
+    }
+  }
+
+  void _onPinchScaleEnd(ScaleEndDetails details) {
+    if (_customScale < 1.03) {
+      setState(() {
+        _customScale = 1.0;
+        _customOffset = Offset.zero;
+      });
+    }
+  }
+
+  void _resetPinchZoom() {
+    setState(() {
+      _customScale = 1.0;
+      _customOffset = Offset.zero;
+    });
+    _showHudToast('Đã đặt lại tỷ lệ');
+  }
+
   void _seekRelative(double seconds) {
     if (_isWebMode) {
       webSeekRelative(_webPlayerId, seconds);
@@ -396,6 +468,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   void _toggleAspectRatio() {
     setState(() {
+      _customScale = 1.0;
+      _customOffset = Offset.zero;
       switch (_aspectRatioMode) {
         case AspectRatioMode.fit169:
           _aspectRatioMode = AspectRatioMode.fillScreen;
@@ -1293,6 +1367,19 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     );
   }
 
+  Future<void> _handleExitPlayer() async {
+    _saveProgress();
+    if (!kIsWeb) {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   void dispose() {
     _saveProgress();
@@ -1314,12 +1401,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
-    final hasPrev = curIdx > 0;
     final hasNext = curIdx != -1 && curIdx + 1 < _currentEpisodeList.length;
     final nextEp = hasNext ? _currentEpisodeList[curIdx + 1] : null;
-
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    final isFullScreen = _isFullScreen || isLandscape;
 
     final showNextEpPrompt = _totalDuration > 60 && (_totalDuration - _currentPosition) <= 90 && hasNext && _autoPlayNext;
 
@@ -1332,72 +1415,101 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Video Element (Native or Web HLS)
+            // 1. Video Element (Native or Web HLS) with 2-finger pinch & drag-to-reposition
             Positioned.fill(
-              child: _isWebMode
-                  ? buildHlsVideoView(
-                      videoElementId: _webPlayerId,
-                      m3u8Url: _currentEpisode.linkM3u8,
-                      startPosition: _currentPosition > 0 ? _currentPosition : widget.initialPositionSeconds.toDouble(),
-                      isZoom: _aspectRatioMode == AspectRatioMode.zoomCinematic,
-                    )
-                  : (_nativeController != null && _nativeController!.value.isInitialized
-                      ? Center(
-                          child: FittedBox(
-                            fit: _aspectRatioMode == AspectRatioMode.fillScreen
-                                ? BoxFit.fill
-                                : (_aspectRatioMode == AspectRatioMode.zoomCinematic ? BoxFit.cover : BoxFit.contain),
-                            child: SizedBox(
-                              width: _nativeController!.value.size.width > 0
-                                  ? _nativeController!.value.size.width
-                                  : 16,
-                              height: _nativeController!.value.size.height > 0
-                                  ? _nativeController!.value.size.height
-                                  : 9,
-                              child: VideoPlayer(_nativeController!),
-                            ),
-                          ),
+              child: ClipRect(
+                child: Transform(
+                  transform: Matrix4.identity()
+                    ..translate(_customOffset.dx, _customOffset.dy)
+                    ..scale(_customScale),
+                  alignment: Alignment.center,
+                  child: _isWebMode
+                      ? buildHlsVideoView(
+                          videoElementId: _webPlayerId,
+                          m3u8Url: _currentEpisode.linkM3u8,
+                          startPosition: _currentPosition > 0 ? _currentPosition : widget.initialPositionSeconds.toDouble(),
+                          initialFit: _aspectRatioMode == AspectRatioMode.fillScreen
+                              ? 'fill'
+                              : (_aspectRatioMode == AspectRatioMode.zoomCinematic ? 'cover' : 'contain'),
                         )
-                      : const Center(child: CircularProgressIndicator(color: AppColors.primary))),
+                      : (_nativeController != null && _nativeController!.value.isInitialized
+                          ? Center(
+                              child: FittedBox(
+                                fit: _aspectRatioMode == AspectRatioMode.fillScreen
+                                    ? BoxFit.fill
+                                    : (_aspectRatioMode == AspectRatioMode.zoomCinematic ? BoxFit.cover : BoxFit.contain),
+                                child: SizedBox(
+                                  width: _nativeController!.value.size.width > 0
+                                      ? _nativeController!.value.size.width
+                                      : 16,
+                                  height: _nativeController!.value.size.height > 0
+                                      ? _nativeController!.value.size.height
+                                      : 9,
+                                  child: VideoPlayer(_nativeController!),
+                                ),
+                              ),
+                            )
+                          : const Center(child: CircularProgressIndicator(color: AppColors.primary))),
+                ),
+              ),
             ),
 
-              // 2. YouTube Touch Gesture Layer: Single tap toggles show/hide controls cleanly
-              Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      setState(() {
-                        _showControls = !_showControls;
-                      });
-                      if (_showControls) {
-                        _resetControlsTimer();
-                      } else {
-                        _controlsTimer?.cancel();
-                      }
-                    },
-                    onLongPressStart: (_) => _onLongPressStart(),
-                    onLongPressEnd: (_) => _onLongPressEnd(),
-                    onLongPressUp: () => _onLongPressEnd(),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onDoubleTap: _onDoubleTapLeft,
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onDoubleTap: _onDoubleTapRight,
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                      ],
+            // 2. YouTube Touch & 2-Finger Pinch Gesture Layer
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onScaleStart: _onPinchScaleStart,
+                onScaleUpdate: _onPinchScaleUpdate,
+                onScaleEnd: _onPinchScaleEnd,
+                onTap: () {
+                  setState(() {
+                    _showControls = !_showControls;
+                  });
+                  if (_showControls) {
+                    _resetControlsTimer();
+                  } else {
+                    _controlsTimer?.cancel();
+                  }
+                },
+                onLongPressStart: (_) => _onLongPressStart(),
+                onLongPressEnd: (_) => _onLongPressEnd(),
+                onLongPressUp: () => _onLongPressEnd(),
+                child: Row(
+                  children: [
+                    // Double tap left: Rewind 10s
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onDoubleTap: _onDoubleTapLeft,
+                        child: Container(color: Colors.transparent),
+                      ),
                     ),
-                  ),
+                    // Center area: double tap resets custom zoom or cycles fit
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onDoubleTap: () {
+                          if (_customScale > 1.05) {
+                            _resetPinchZoom();
+                          } else {
+                            _toggleAspectRatio();
+                          }
+                        },
+                        child: Container(color: Colors.transparent),
+                      ),
+                    ),
+                    // Double tap right: Fast forward 10s
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onDoubleTap: _onDoubleTapRight,
+                        child: Container(color: Colors.transparent),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
 
               // 3. YouTube Ripple Left
               if (_showLeftSeekRipple)
@@ -1529,211 +1641,52 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
         ),
     );
 
-    // Single Unified Scaffold with Keyboard Listener for shortcuts:
+    // Single Unified Scaffold with PopScope & Keyboard Listener:
     // N: Next episode, P: Prev episode, Space: Play/Pause, ArrowLeft/Right: Seek 10s, M: Mute
-    return KeyboardListener(
-      focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: (KeyEvent event) {
-        if (event is KeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.keyN) {
-            _playNextEpisode();
-          } else if (event.logicalKey == LogicalKeyboardKey.keyP) {
-            _playPrevEpisode();
-          } else if (event.logicalKey == LogicalKeyboardKey.space) {
-            _togglePlayPause();
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            _seekRelative(10);
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-            _seekRelative(-10);
-          } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
-            _toggleFullScreen();
-          } else if (event.logicalKey == LogicalKeyboardKey.keyM) {
-            _toggleMute();
-          }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop) {
+          await _handleExitPlayer();
         }
       },
-      child: isFullScreen
-          ? Scaffold(
-              key: const ValueKey('unified_player_scaffold_landscape'),
-              backgroundColor: Colors.black,
-              body: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 100% Immersive Full-screen Video Player (Chuẩn Netflix)
-                  Positioned.fill(child: videoPlayerWidget),
-
-                  // Slide-in Episode Drawer on demand (for series)
-                  if (_showEpisodeDrawer && _currentEpisodeList.length > 1)
-                    _buildEpisodeDrawer(),
-                ],
-              ),
-            )
-          : Scaffold(
-              key: const ValueKey('unified_player_scaffold_portrait'),
-              backgroundColor: AppColors.background,
-              body: SafeArea(
-                top: true,
-                bottom: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Mobile Portrait: Video Player 16:9 on top
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: videoPlayerWidget,
-                    ),
-
-                    // 2. Portrait Navigation Bar
-                    _buildPortraitControlsBar(hasPrev, hasNext),
-
-                    // 3. Scrollable Movie Details & Episodes List below
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                        physics: const BouncingScrollPhysics(),
-                        children: [
-                          Text(
-                            widget.movie.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Text(
-                                _currentEpisode.name.toLowerCase().startsWith('tập')
-                                    ? _currentEpisode.name
-                                    : 'Tập ${_currentEpisode.name}',
-                                style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (widget.movie.year > 0) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  '•  ${widget.movie.year}',
-                                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-                                ),
-                              ],
-                              if (widget.movie.quality.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    widget.movie.quality,
-                                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          if (_currentEpisodeList.length > 1) ...[
-                            Text(
-                              'Danh sách tập (${_currentEpisodeList.length})',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            EpisodeGridWidget(
-                              episodes: _currentEpisodeList,
-                              currentEpisodeSlug: _currentEpisode.slug,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              onEpisodeSelected: (ep) => _switchEpisode(ep),
-                            ),
-                          ],
-
-                          if (widget.movie.content.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            const Text(
-                              'Nội dung phim',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              widget.movie.content.replaceAll(RegExp(r'<[^>]*>'), ''),
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 13,
-                                height: 1.45,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  // Portrait Controls Bar (Quick Previous / Next & Fullscreen button)
-  Widget _buildPortraitControlsBar(bool hasPrev, bool hasNext) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: const BoxDecoration(
-        color: Color(0xFF16181F),
-        border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 0.5),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
+      child: KeyboardListener(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (KeyEvent event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.keyN) {
+              _playNextEpisode();
+            } else if (event.logicalKey == LogicalKeyboardKey.keyP) {
+              _playPrevEpisode();
+            } else if (event.logicalKey == LogicalKeyboardKey.space) {
+              _togglePlayPause();
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              _seekRelative(10);
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+              _seekRelative(-10);
+            } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
+              _toggleFullScreen();
+            } else if (event.logicalKey == LogicalKeyboardKey.keyM) {
+              _toggleMute();
+            }
+          }
+        },
+        child: Scaffold(
+          key: const ValueKey('unified_player_scaffold_cinema'),
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
             children: [
-              TextButton.icon(
-                onPressed: hasPrev ? _playPrevEpisode : null,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: hasPrev ? Colors.white : AppColors.textMuted,
-                ),
-                icon: const Icon(Icons.skip_previous_rounded, size: 18),
-                label: const Text('Tập trước', style: TextStyle(fontSize: 12), maxLines: 1),
-              ),
-              const SizedBox(width: 4),
-              TextButton.icon(
-                onPressed: hasNext ? _playNextEpisode : null,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: hasNext ? Colors.white : AppColors.textMuted,
-                ),
-                icon: const Icon(Icons.skip_next_rounded, size: 18),
-                label: const Text('Tập tiếp', style: TextStyle(fontSize: 12), maxLines: 1),
-              ),
+              // 100% Immersive Full-screen Video Player (Chuẩn rạp phim Netflix)
+              Positioned.fill(child: videoPlayerWidget),
+
+              // Slide-in Episode Drawer on demand (for series)
+              if (_showEpisodeDrawer && _currentEpisodeList.length > 1)
+                _buildEpisodeDrawer(),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 26),
-            tooltip: 'Toàn màn hình',
-            onPressed: _toggleFullScreen,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2004,7 +1957,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                   children: [
                     // Glass Back Button
                     InkWell(
-                      onTap: () => Navigator.pop(context),
+                      onTap: _handleExitPlayer,
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.all(8),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import 'home/home_screen.dart';
@@ -190,8 +191,10 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final isTabletLandscape = width >= 600;
+    final media = MediaQuery.of(context);
+    // Chỉ kích hoạt Sidebar cho Máy tính bảng thực thụ (shortestSide >= 600) hoặc PC Desktop Web rộng
+    // Điện thoại di động (kể cả xoay ngang thì shortestSide chỉ ~390px) luôn dùng giao diện Mobile chuẩn!
+    final isTabletLandscape = media.size.shortestSide >= 600 || (kIsWeb && media.size.width >= 900);
 
     final pages = [
       HomeScreen(onSearchTap: () => _switchTab(1, requestFocus: true)),

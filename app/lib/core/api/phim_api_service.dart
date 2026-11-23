@@ -169,7 +169,7 @@ class PhimApiService {
 
     final query = Uri(queryParameters: params).query;
     final kkPhimUrl = '$primaryApi/v1/api/tim-kiem?$query';
-    final vsMovUrl = '$vsMovApi/tim-kiem?keyword=$encoded';
+    final vsMovUrl = '$vsMovApi/tim-kiem?keyword=$encoded&page=$page';
 
     // Chạy song song cả 2 nguồn KKPhim & VSMov
     final results = await Future.wait([
@@ -223,7 +223,7 @@ class PhimApiService {
     // Nếu cả KKPhim và VSMov đều không có kết quả, fallback sang NguonC
     if (merged.isEmpty) {
       try {
-        final nguonCUrl = '$nguonCApi/films/search?keyword=$encoded';
+        final nguonCUrl = '$nguonCApi/films/search?keyword=$encoded&page=$page';
         final res = await _dio.get(nguonCUrl);
         if (res.statusCode == 200 && res.data != null) {
           final items = res.data['items'] as List? ?? [];

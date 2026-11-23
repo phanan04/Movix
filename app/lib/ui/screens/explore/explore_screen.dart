@@ -18,13 +18,174 @@ class ExploreScreen extends ConsumerStatefulWidget {
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   Timer? _debounceTimer;
   late FocusNode _focusNode;
+
+  // Explore Pagination State
+  List<MovieItem> _exploreMovies = [];
+  int _explorePage = 1;
+  bool _isLoadingExplore = false;
+  bool _hasMoreExplore = true;
+  String? _exploreError;
+
+  // Search Pagination State
+  List<MovieItem> _searchMovies = [];
+  int _searchPage = 1;
+  bool _isLoadingSearch = false;
+  bool _hasMoreSearch = true;
+  String? _searchError;
 
   @override
   void initState() {
     super.initState();
     _focusNode = widget.focusNode ?? FocusNode();
+    _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchExploreMovies(isRefresh: true);
+    });
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll >= maxScroll - 350) {
+      if (_searchController.text.trim().isNotEmpty) {
+        if (!_isLoadingSearch && _hasMoreSearch) {
+          _fetchSearchMovies(_searchController.text.trim());
+        }
+      } else {
+        if (!_isLoadingExplore && _hasMoreExplore) {
+          _fetchExploreMovies();
+        }
+      }
+    }
+  }
+
+  Future<void> _fetchExploreMovies({bool isRefresh = false}) async {
+    if (_isLoadingExplore) return;
+    if (!isRefresh && !_hasMoreExplore) return;
+
+    final targetPage = isRefresh ? 1 : _explorePage + 1;
+    setState(() {
+      _isLoadingExplore = true;
+      if (isRefresh) {
+        _exploreError = null;
+      }
+    });
+
+    try {
+      final api = ref.read(apiServiceProvider);
+      final filter = ref.read(exploreFilterProvider);
+
+      final apiSortField = (filter.sortField == 'rating' || filter.sortField == 'popular')
+          ? 'modified.time'
+          : filter.sortField;
+
+      final newMovies = await api.getFilteredMovies(
+        type: filter.type,
+        category: filter.category,
+        country: filter.region,
+        year: filter.year,
+        sortLang: filter.lang,
+        sortField: apiSortField,
+        sortType: filter.sortType,
+        page: targetPage,
+        limit: 24,
+      );
+
+      if (mounted) {
+        setState(() {
+          _explorePage = targetPage;
+          _isLoadingExplore = false;
+          if (isRefresh) {
+            _exploreMovies = newMovies;
+          } else {
+            final seenSlugs = _exploreMovies.map((m) => m.slug).toSet();
+            for (final m in newMovies) {
+              if (seenSlugs.add(m.slug)) {
+                _exploreMovies.add(m);
+              }
+            }
+          }
+          if (newMovies.length < 24) {
+            _hasMoreExplore = false;
+          } else {
+            _hasMoreExplore = true;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingExplore = false;
+          if (isRefresh && _exploreMovies.isEmpty) {
+            _exploreError = e.toString();
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchSearchMovies(String query, {bool isRefresh = false}) async {
+    final cleanQ = query.trim();
+    if (cleanQ.isEmpty) return;
+    if (_isLoadingSearch) return;
+    if (!isRefresh && !_hasMoreSearch) return;
+
+    final targetPage = isRefresh ? 1 : _searchPage + 1;
+    setState(() {
+      _isLoadingSearch = true;
+      if (isRefresh) {
+        _searchError = null;
+      }
+    });
+
+    try {
+      final api = ref.read(apiServiceProvider);
+      final filter = ref.read(exploreFilterProvider);
+
+      final newMovies = await api.searchMovies(
+        cleanQ,
+        category: filter.category,
+        country: filter.region,
+        year: filter.year,
+        page: targetPage,
+        limit: 24,
+      );
+
+      if (mounted) {
+        setState(() {
+          _searchPage = targetPage;
+          _isLoadingSearch = false;
+          if (isRefresh) {
+            _searchMovies = newMovies;
+          } else {
+            final seenSlugs = _searchMovies.map((m) => m.slug).toSet();
+            for (final m in newMovies) {
+              if (seenSlugs.add(m.slug)) {
+                _searchMovies.add(m);
+              }
+            }
+          }
+          if (newMovies.length < 12) {
+            _hasMoreSearch = false;
+          } else {
+            _hasMoreSearch = true;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSearch = false;
+          if (isRefresh && _searchMovies.isEmpty) {
+            _searchError = e.toString();
+          }
+        });
+      }
+    }
   }
 
   @override
@@ -42,6 +203,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void dispose() {
     _searchController.dispose();
     _debounceTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     if (widget.focusNode == null) {
       _focusNode.dispose();
     }
@@ -51,13 +214,30 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void _onSearchChanged(String query) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 350), () {
-      ref.read(searchQueryProvider.notifier).setQuery(query);
+      final q = query.trim();
+      ref.read(searchQueryProvider.notifier).setQuery(q);
+      if (q.isNotEmpty) {
+        _fetchSearchMovies(q, isRefresh: true);
+      } else {
+        setState(() {
+          _searchMovies = [];
+          _searchPage = 1;
+          _hasMoreSearch = true;
+          _searchError = null;
+        });
+      }
     });
   }
 
   void _clearSearch() {
     _searchController.clear();
     ref.read(searchQueryProvider.notifier).setQuery('');
+    setState(() {
+      _searchMovies = [];
+      _searchPage = 1;
+      _hasMoreSearch = true;
+      _searchError = null;
+    });
   }
 
   String _getTypeLabel(String slug) {
@@ -258,6 +438,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   region: filters['region'],
                                   year: filters['year'],
                                 );
+                                _fetchExploreMovies(isRefresh: true);
                               },
                             );
                           },
@@ -301,27 +482,33 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                     sortField: 'modified.time',
                                     sortType: 'desc',
                                   );
+                                  _fetchExploreMovies(isRefresh: true);
                                 },
                               ),
                             if (filter.lang != 'all')
                               _buildActiveFilterChip('Ngôn ngữ: ${_getLangLabel(filter.lang)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(lang: 'all');
+                                _fetchExploreMovies(isRefresh: true);
                               }),
                             if (filter.type != 'all')
                               _buildActiveFilterChip('Loại: ${_getTypeLabel(filter.type)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(type: 'all');
+                                _fetchExploreMovies(isRefresh: true);
                               }),
                             if (filter.category != 'all')
                               _buildActiveFilterChip('Thể loại: ${_getCategoryLabel(filter.category)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
+                                _fetchExploreMovies(isRefresh: true);
                               }),
                             if (filter.region != 'all')
                               _buildActiveFilterChip('Quốc gia: ${_getRegionLabel(filter.region)}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(region: 'all');
+                                _fetchExploreMovies(isRefresh: true);
                               }),
                             if (filter.year != 'all')
                               _buildActiveFilterChip('Năm: ${filter.year}', () {
                                 ref.read(exploreFilterProvider.notifier).updateFilter(year: 'all');
+                                _fetchExploreMovies(isRefresh: true);
                               }),
                           ],
                         ),
@@ -330,6 +517,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     TextButton(
                       onPressed: () {
                         ref.read(exploreFilterProvider.notifier).resetFilter();
+                        _fetchExploreMovies(isRefresh: true);
                       },
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -350,9 +538,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 backgroundColor: AppColors.surface,
                 onRefresh: () async {
                   if (isSearching) {
-                    return ref.refresh(searchResultsProvider.future);
+                    await _fetchSearchMovies(_searchController.text.trim(), isRefresh: true);
                   } else {
-                    return ref.refresh(exploreMoviesProvider.future);
+                    await _fetchExploreMovies(isRefresh: true);
                   }
                 },
                 child: isSearching ? _buildSearchResults() : _buildCategoryMovies(),
@@ -391,71 +579,75 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Widget _buildSearchResults() {
-    final searchAsync = ref.watch(searchResultsProvider);
-
-    return searchAsync.when(
-      data: (movies) {
-        if (movies.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.search_off_rounded, size: 64, color: AppColors.textMuted),
-                SizedBox(height: 12),
-                Text(
-                  'Không tìm thấy phim phù hợp',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-                ),
-              ],
-            ),
-          );
-        }
-        return _buildMovieGrid(movies);
-      },
-      loading: () => _buildGridSkeleton(),
-      error: (e, _) => Center(
-        child: Text(
-          'Lỗi tìm kiếm: $e',
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      ),
+    return _buildLazyMovieGrid(
+      movies: _searchMovies,
+      isLoading: _isLoadingSearch,
+      hasMore: _hasMoreSearch,
+      error: _searchError,
+      onRetry: () => _fetchSearchMovies(_searchController.text.trim(), isRefresh: true),
+      emptyMessage: 'Không tìm thấy phim phù hợp với từ khóa "${_searchController.text.trim()}"',
     );
   }
 
   Widget _buildCategoryMovies() {
-    final exploreAsync = ref.watch(exploreMoviesProvider);
-
-    return exploreAsync.when(
-      data: (movies) {
-        if (movies.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.filter_alt_off_rounded, size: 64, color: AppColors.textMuted),
-                SizedBox(height: 12),
-                Text(
-                  'Không có phim nào thỏa mãn bộ lọc',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-                ),
-              ],
-            ),
-          );
-        }
-        return _buildMovieGrid(movies);
-      },
-      loading: () => _buildGridSkeleton(),
-      error: (e, _) => Center(
-        child: Text(
-          'Lỗi tải phim: $e',
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      ),
+    return _buildLazyMovieGrid(
+      movies: _exploreMovies,
+      isLoading: _isLoadingExplore,
+      hasMore: _hasMoreExplore,
+      error: _exploreError,
+      onRetry: () => _fetchExploreMovies(isRefresh: true),
+      emptyMessage: 'Không có phim nào thỏa mãn bộ lọc hiện tại',
     );
   }
 
-  // Responsive Grid (2 columns on mobile, 3 on phablets, 4-5 on tablet landscape)
-  Widget _buildMovieGrid(List<MovieItem> movies) {
+  Widget _buildLazyMovieGrid({
+    required List<MovieItem> movies,
+    required bool isLoading,
+    required bool hasMore,
+    required String? error,
+    required VoidCallback onRetry,
+    required String emptyMessage,
+  }) {
+    if (isLoading && movies.isEmpty) {
+      return _buildGridSkeleton();
+    }
+
+    if (error != null && movies.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 48, color: Colors.amberAccent),
+            const SizedBox(height: 12),
+            Text('Không thể tải dữ liệu: $error', style: const TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Thử lại'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (movies.isEmpty && !isLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.search_off_rounded, size: 64, color: AppColors.textMuted),
+            const SizedBox(height: 12),
+            Text(
+              emptyMessage,
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth >= 1000
@@ -464,20 +656,109 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 ? 4
                 : (constraints.maxWidth >= 480 ? 3 : 2));
 
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+        return CustomScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          cacheExtent: 600,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            childAspectRatio: 0.65, // Optimal cinema 2:3 poster ratio + title
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 16,
-          ),
-          itemCount: movies.length,
-          itemBuilder: (context, index) {
-            return GridMovieCard(movie: movies[index]);
-          },
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  childAspectRatio: 0.65,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 16,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    return GridMovieCard(movie: movies[index]);
+                  },
+                  childCount: movies.length,
+                ),
+              ),
+            ),
+
+            // Loading More Spinner indicator
+            if (isLoading && movies.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Đang tải thêm phim...',
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Truly End-of-List notice (Thông báo khi kéo xuống hết danh sách thật sự)
+            if (!hasMore && movies.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 90),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Đã tải hết danh sách (${movies.length} phim)',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Bạn đã khám phá toàn bộ phim phù hợp với từ khóa & bộ lọc hiện tại',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Extra bottom padding if more items are available
+            if (hasMore && !isLoading)
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 90),
+              ),
+          ],
         );
       },
     );

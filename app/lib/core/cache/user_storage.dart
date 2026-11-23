@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +53,8 @@ class UserCommentItem {
   final String timeText;
   int likes;
   bool isLiked;
+  final String userId;
+  final DateTime createdAt;
 
   UserCommentItem({
     required this.id,
@@ -61,7 +65,9 @@ class UserCommentItem {
     required this.timeText,
     this.likes = 0,
     this.isLiked = false,
-  });
+    this.userId = '',
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -71,10 +77,21 @@ class UserCommentItem {
     'content': content,
     'timeText': timeText,
     'likes': likes,
-    'isLiked': isLiked,
+    'userId': userId,
+    'createdAt': createdAt.toIso8601String(),
   };
 
   factory UserCommentItem.fromJson(Map<String, dynamic> json) {
+    DateTime parsedDate;
+    final rawDate = json['createdAt'];
+    if (rawDate is Timestamp) {
+      parsedDate = rawDate.toDate();
+    } else if (rawDate is String) {
+      parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
+    } else {
+      parsedDate = DateTime.now();
+    }
+
     return UserCommentItem(
       id: json['id']?.toString() ?? '',
       movieSlug: json['movieSlug']?.toString() ?? '',
@@ -84,6 +101,8 @@ class UserCommentItem {
       timeText: json['timeText']?.toString() ?? 'Vừa xong',
       likes: (json['likes'] as num?)?.toInt() ?? 0,
       isLiked: json['isLiked'] == true,
+      userId: json['userId']?.toString() ?? '',
+      createdAt: parsedDate,
     );
   }
 }
@@ -151,12 +170,17 @@ class UserStorage {
   final ValueNotifier<List<WatchProgress>> historyNotifier = ValueNotifier([]);
   final ValueNotifier<List<UserCommentItem>> commentsNotifier = ValueNotifier([]);
 
+  StreamSubscription<DocumentSnapshot>? _cloudSyncSub;
+
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
     _loadUser();
     _loadMyList();
     _loadHistory();
     _loadComments();
+    if (currentUserNotifier.value != null) {
+      _startCloudSync(currentUserNotifier.value!.id);
+    }
   }
 
   Future<SharedPreferences> _ensurePrefs() async {
@@ -186,6 +210,139 @@ class UserStorage {
     } else {
       _loadMyList();
       _loadHistory();
+    }
+  }
+
+  // --- CLOUD FIRESTORE SYNCHRONIZATION (Cross-Device Real-Time Sync) ---
+  Future<void> _startCloudSync(String userId) async {
+    _cloudSyncSub?.cancel();
+    if (userId.isEmpty) return;
+
+    try {
+      // 1. Initial Pull & Merge from Cloud
+      await _pullFromCloud(userId);
+
+      // 2. Real-time sync listener across devices
+      _cloudSyncSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots()
+          .listen((snapshot) {
+        if (!snapshot.exists || snapshot.data() == null) return;
+        final data = snapshot.data() as Map<String, dynamic>;
+        _applyCloudData(data);
+      }, onError: (e) {
+        debugPrint('Firestore real-time sync note: $e');
+      });
+    } catch (e) {
+      debugPrint('Firestore sync initialization note: $e');
+    }
+  }
+
+  void _stopCloudSync() {
+    _cloudSyncSub?.cancel();
+    _cloudSyncSub = null;
+  }
+
+  Future<void> _pullFromCloud(String userId) async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      if (doc.exists && doc.data() != null) {
+        _applyCloudData(doc.data()!);
+      } else {
+        // First time on cloud: Push current local data up
+        await _pushAllToCloud(userId);
+      }
+    } catch (e) {
+      debugPrint('Firestore pull note: $e');
+    }
+  }
+
+  void _applyCloudData(Map<String, dynamic> data) {
+    try {
+      // 1. Merge My List
+      if (data.containsKey('myList') && data['myList'] is List) {
+        final cloudList = (data['myList'] as List)
+            .map((e) => MovieItem.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+
+        final merged = <MovieItem>[...cloudList];
+        final seen = merged.map((m) => m.slug).toSet();
+        for (final m in myListNotifier.value) {
+          if (seen.add(m.slug)) {
+            merged.add(m);
+          }
+        }
+        myListNotifier.value = merged;
+        final key = _getMyListKey();
+        _prefs?.setString(key, jsonEncode(merged.map((e) => e.toJson()).toList()));
+      }
+
+      // 2. Merge Watch History
+      if (data.containsKey('history') && data['history'] is List) {
+        final cloudHistory = (data['history'] as List)
+            .map((e) => WatchProgress.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+
+        final map = <String, WatchProgress>{};
+        for (final h in historyNotifier.value) {
+          map[h.movieSlug] = h;
+        }
+        for (final h in cloudHistory) {
+          if (!map.containsKey(h.movieSlug) || h.updatedAt.isAfter(map[h.movieSlug]!.updatedAt)) {
+            map[h.movieSlug] = h;
+          }
+        }
+        final mergedHistory = map.values.toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        if (mergedHistory.length > 50) {
+          mergedHistory.removeRange(50, mergedHistory.length);
+        }
+
+        historyNotifier.value = mergedHistory;
+        final key = _getHistoryKey();
+        _prefs?.setString(key, jsonEncode(mergedHistory.map((e) => e.toJson()).toList()));
+      }
+    } catch (e) {
+      debugPrint('Error applying cloud data: $e');
+    }
+  }
+
+  Future<void> _pushMyListToCloud() async {
+    final user = currentUserNotifier.value;
+    if (user == null || user.id.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.id).set({
+        'myList': myListNotifier.value.map((e) => e.toJson()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error pushing myList to cloud: $e');
+    }
+  }
+
+  Future<void> _pushHistoryToCloud() async {
+    final user = currentUserNotifier.value;
+    if (user == null || user.id.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.id).set({
+        'history': historyNotifier.value.map((e) => e.toJson()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error pushing history to cloud: $e');
+    }
+  }
+
+  Future<void> _pushAllToCloud(String userId) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'myList': myListNotifier.value.map((e) => e.toJson()).toList(),
+        'history': historyNotifier.value.map((e) => e.toJson()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error pushing all data to cloud: $e');
     }
   }
 
@@ -228,6 +385,7 @@ class UserStorage {
     currentUserNotifier.value = user;
     await p.setString('user_profile', jsonEncode(user.toJson()));
     _switchUserDataContext(user);
+    _startCloudSync(user.id);
   }
 
   /// Real Account Registration with Password and Email Validation
@@ -461,6 +619,7 @@ class UserStorage {
   }
 
   Future<void> signOut() async {
+    _stopCloudSync();
     try {
       await FirebaseAuth.instance.signOut();
     } catch (_) {}
@@ -532,12 +691,14 @@ class UserStorage {
     historyNotifier.value = [];
     final key = _getHistoryKey();
     await _prefs?.remove(key);
+    _pushHistoryToCloud();
   }
 
   Future<void> clearMyList() async {
     myListNotifier.value = [];
     final key = _getMyListKey();
     await _prefs?.remove(key);
+    _pushMyListToCloud();
   }
 
   // --- MY LIST (Favorites - Per Account Scoped) ---
@@ -581,6 +742,7 @@ class UserStorage {
     myListNotifier.value = current;
     final key = _getMyListKey();
     await _prefs?.setString(key, jsonEncode(current.map((e) => e.toJson()).toList()));
+    _pushMyListToCloud();
   }
 
   // --- WATCH HISTORY & RESUME (Per Account Scoped) ---
@@ -625,6 +787,7 @@ class UserStorage {
     historyNotifier.value = current;
     final key = _getHistoryKey();
     await _prefs?.setString(key, jsonEncode(current.map((e) => e.toJson()).toList()));
+    _pushHistoryToCloud();
   }
 
   // --- REAL COMMENTS PERSISTENCE ---
@@ -645,24 +808,108 @@ class UserStorage {
     return commentsNotifier.value.where((c) => c.movieSlug == movieSlug).toList();
   }
 
+  Stream<List<UserCommentItem>> streamCommentsForMovie(String movieSlug) {
+    return FirebaseFirestore.instance
+        .collection('comments')
+        .where('movieSlug', isEqualTo: movieSlug)
+        .snapshots()
+        .map((snapshot) {
+          final currentUserId = currentUserNotifier.value?.id ?? '';
+          final list = snapshot.docs.map((doc) {
+            final data = Map<String, dynamic>.from(doc.data());
+            data['id'] = doc.id;
+            final likedBy = List<String>.from(data['likedBy'] ?? []);
+            data['isLiked'] = currentUserId.isNotEmpty && likedBy.contains(currentUserId);
+            return UserCommentItem.fromJson(data);
+          }).toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        });
+  }
+
   Future<void> addComment({
     required String movieSlug,
     required String content,
   }) async {
     final user = currentUserNotifier.value;
+    final commentId = 'cmt_${DateTime.now().millisecondsSinceEpoch}';
+    final now = DateTime.now();
+
     final newComment = UserCommentItem(
-      id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
+      id: commentId,
       movieSlug: movieSlug,
       userName: user != null && user.name.isNotEmpty ? user.name : 'Khán giả Movix',
       userAvatar: user != null ? user.avatarUrl : '',
       content: content,
       timeText: 'Vừa xong',
       likes: 0,
+      userId: user?.id ?? '',
+      createdAt: now,
     );
 
+    // 1. Lưu cục bộ trước (offline-first)
     final current = List<UserCommentItem>.from(commentsNotifier.value);
     current.insert(0, newComment);
     commentsNotifier.value = current;
     await _prefs?.setString('user_comments', jsonEncode(current.map((e) => e.toJson()).toList()));
+
+    // 2. Đồng bộ lên Cloud Firestore
+    try {
+      await FirebaseFirestore.instance.collection('comments').doc(commentId).set({
+        'id': commentId,
+        'movieSlug': movieSlug,
+        'userName': newComment.userName,
+        'userAvatar': newComment.userAvatar,
+        'content': content,
+        'timeText': newComment.timeText,
+        'likes': 0,
+        'likedBy': [],
+        'userId': newComment.userId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Cloud addComment note: $e');
+    }
+  }
+
+  Future<void> toggleLikeComment(String commentId) async {
+    final user = currentUserNotifier.value;
+    final userId = user?.id ?? 'guest_${_prefs?.getString('guest_id') ?? 'anon'}';
+    try {
+      final docRef = FirebaseFirestore.instance.collection('comments').doc(commentId);
+      final doc = await docRef.get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final likedBy = List<String>.from(data['likedBy'] ?? []);
+        if (likedBy.contains(userId)) {
+          likedBy.remove(userId);
+        } else {
+          likedBy.add(userId);
+        }
+        await docRef.update({
+          'likes': likedBy.length,
+          'likedBy': likedBy,
+        });
+      }
+    } catch (e) {
+      debugPrint('Cloud toggleLikeComment note: $e');
+    }
+  }
+
+  /// Gửi email khôi phục mật khẩu thông qua Firebase Authentication
+  Future<void> sendPasswordResetEmail(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: cleanEmail);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        throw 'Email này chưa được đăng ký tài khoản trên hệ thống Movix!';
+      } else if (e.code == 'invalid-email') {
+        throw 'Định dạng email không hợp lệ!';
+      }
+      throw 'Không thể gửi email khôi phục: ${e.message}';
+    } catch (e) {
+      throw 'Lỗi kết nối Firebase: $e';
+    }
   }
 }

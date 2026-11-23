@@ -13,6 +13,7 @@ class ForgotPasswordMethodsScreen extends StatefulWidget {
 class _ForgotPasswordMethodsScreenState extends State<ForgotPasswordMethodsScreen> {
   final TextEditingController _contactController = TextEditingController();
   String _selectedMethod = 'email'; // 'sms' or 'email'
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -29,7 +30,7 @@ class _ForgotPasswordMethodsScreenState extends State<ForgotPasswordMethodsScree
     super.dispose();
   }
 
-  void _onContinue() {
+  Future<void> _onContinue() async {
     final contact = _contactController.text.trim();
     if (contact.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -41,14 +42,71 @@ class _ForgotPasswordMethodsScreenState extends State<ForgotPasswordMethodsScree
       );
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TypeOtpScreen(
-          targetContact: contact,
+
+    if (_selectedMethod == 'email') {
+      setState(() => _isLoading = true);
+      try {
+        await UserStorage().sendPasswordResetEmail(contact);
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.mark_email_read_rounded, color: AppColors.primary, size: 28),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Đã gửi liên kết',
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Đường link đặt lại mật khẩu đã được gửi tới hộp thư:\n$contact\n\nVui lòng kiểm tra hộp thư đến (hoặc hòm thư Rác / Spam) và làm theo hướng dẫn để thiết lập mật khẩu mới.',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Về trang Đăng nhập', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.redAccent,
+            content: Text(e.toString()),
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TypeOtpScreen(
+            targetContact: contact,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
@@ -136,16 +194,25 @@ class _ForgotPasswordMethodsScreenState extends State<ForgotPasswordMethodsScree
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _onContinue,
+                  onPressed: _isLoading ? null : _onContinue,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Tiếp tục gửi mã OTP',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          _selectedMethod == 'email' ? 'Gửi liên kết khôi phục' : 'Tiếp tục gửi mã OTP',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
                 ),
               ),
               const SizedBox(height: 16),

@@ -7,8 +7,16 @@ import 'package:popover/popover.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
+import '../../../core/network/ping_helper.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../widgets/episode_grid_widget.dart';
 import 'web_player_controller.dart';
+
+enum AspectRatioMode {
+  fit169,
+  fillScreen,
+  zoomCinematic,
+}
 
 class PlayerScreen extends StatefulWidget {
   final MovieDetail movie;
@@ -47,7 +55,18 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   bool _isLongPressing2X = false;
   bool _isFullScreen = false;
   double _currentSpeed = 1.0;
-  bool _isZoomFit = true;
+  AspectRatioMode _aspectRatioMode = AspectRatioMode.fillScreen;
+
+  String get _aspectRatioLabel {
+    switch (_aspectRatioMode) {
+      case AspectRatioMode.fit169:
+        return '16:9';
+      case AspectRatioMode.fillScreen:
+        return 'Tràn viền';
+      case AspectRatioMode.zoomCinematic:
+        return 'Zoom';
+    }
+  }
 
   String _selectedQuality = '1080p FHD';
   String _selectedAudioTrack = 'Tiếng gốc (Vietsub)';
@@ -106,11 +125,12 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
     // Đo độ trễ thực ms đến tất cả máy chủ phát (KKPhim, VSMov,...)
     _measureAllServerLatencies();
 
-    // Netflix logic: Chuyển ngay sang màn hình ngang toàn màn hình (Landscape Immersive) trên thiết bị di động
+    // Cho phép xoay linh hoạt (ngang toàn màn hình, dọc hiển thị player 16:9 + thông tin tập)
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
+        DeviceOrientation.portraitUp,
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
@@ -256,7 +276,11 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
         ]);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       } else {
-        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     }
@@ -372,12 +396,37 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   void _toggleAspectRatio() {
     setState(() {
-      _isZoomFit = !_isZoomFit;
+      switch (_aspectRatioMode) {
+        case AspectRatioMode.fit169:
+          _aspectRatioMode = AspectRatioMode.fillScreen;
+          break;
+        case AspectRatioMode.fillScreen:
+          _aspectRatioMode = AspectRatioMode.zoomCinematic;
+          break;
+        case AspectRatioMode.zoomCinematic:
+          _aspectRatioMode = AspectRatioMode.fit169;
+          break;
+      }
     });
     if (_isWebMode) {
-      webSetVideoFit(_webPlayerId, _isZoomFit ? 'cover' : 'contain');
+      final fitStr = _aspectRatioMode == AspectRatioMode.fillScreen
+          ? 'fill'
+          : (_aspectRatioMode == AspectRatioMode.zoomCinematic ? 'cover' : 'contain');
+      webSetVideoFit(_webPlayerId, fitStr);
     }
-    _showHudToast(_isZoomFit ? 'Tỷ lệ: Cắt tràn viền (Zoom)' : 'Tỷ lệ: 16:9 Chuẩn');
+    String toast = '';
+    switch (_aspectRatioMode) {
+      case AspectRatioMode.fit169:
+        toast = 'Tỷ lệ: 16:9 Chuẩn';
+        break;
+      case AspectRatioMode.fillScreen:
+        toast = 'Tỷ lệ: Tràn viền (Fill)';
+        break;
+      case AspectRatioMode.zoomCinematic:
+        toast = 'Tỷ lệ: Phóng to (Zoom)';
+        break;
+    }
+    _showHudToast(toast);
   }
 
   void _cycleQuality() {
@@ -466,8 +515,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
     final dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 4),
-        receiveTimeout: const Duration(seconds: 4),
+        connectTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 3),
         validateStatus: (status) => status != null && status < 500,
       ),
     );
@@ -497,6 +546,22 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       () async {
         final stopwatch = Stopwatch()..start();
         try {
+          final uri = Uri.tryParse(testUrl);
+          if (uri != null && uri.host.isNotEmpty && !kIsWeb) {
+            final port = uri.port > 0 ? uri.port : (uri.scheme == 'http' ? 80 : 443);
+            final socketMs = await pingHostSocket(uri.host, port, const Duration(seconds: 2));
+            if (socketMs != null && socketMs > 0) {
+              if (mounted) {
+                setState(() {
+                  _pingingServers.remove(i);
+                  _serverLatencies[i] = socketMs;
+                });
+              }
+              return;
+            }
+          }
+
+          // Fallback hoặc trên web
           await dio.head(testUrl);
           stopwatch.stop();
           final ms = stopwatch.elapsedMilliseconds;
@@ -603,9 +668,10 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
 
   Color _getServerLatencyColor(int? ms) {
     if (ms == null || ms < 0) return Colors.white54;
-    if (ms < 120) return const Color(0xFF22C55E); // Green
-    if (ms < 300) return const Color(0xFFEAB308); // Yellow
-    return const Color(0xFFEF4444); // Red
+    if (ms < 150) return const Color(0xFF22C55E); // Green: Cực nhanh (< 150ms)
+    if (ms < 350) return const Color(0xFF22C55E); // Green: Rất tốt (< 350ms)
+    if (ms < 600) return const Color(0xFFEAB308); // Yellow: Ổn định (< 600ms)
+    return const Color(0xFFEF4444); // Red: Chậm (> 600ms)
   }
 
   String _getServerLatencyText(int? ms, bool isPinging) {
@@ -1001,6 +1067,55 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                           ),
                           const SizedBox(height: 10),
 
+                          // Tỉ lệ hiển thị (Aspect Ratio)
+                          const Text('Tỷ lệ hiển thị', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: [
+                              (mode: AspectRatioMode.fit169, label: '16:9 Gốc'),
+                              (mode: AspectRatioMode.fillScreen, label: 'Tràn viền'),
+                              (mode: AspectRatioMode.zoomCinematic, label: 'Zoom'),
+                            ].map((item) {
+                              final isSel = _aspectRatioMode == item.mode;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() => _aspectRatioMode = item.mode);
+                                      setPopState(() {});
+                                      if (_isWebMode) {
+                                        final fitStr = item.mode == AspectRatioMode.fillScreen
+                                            ? 'fill'
+                                            : (item.mode == AspectRatioMode.zoomCinematic ? 'cover' : 'contain');
+                                        webSetVideoFit(_webPlayerId, fitStr);
+                                      }
+                                      _showHudToast('Tỷ lệ: ${item.label}');
+                                    },
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 5),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSel ? AppColors.primary : Colors.white.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        item.label,
+                                        style: TextStyle(
+                                          color: isSel ? Colors.white : Colors.white70,
+                                          fontSize: 10.5,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+
                           // 3. Tốc độ phát (Playback Speed)
                           Text('Tốc độ phát: ${_currentSpeed}x', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 5),
@@ -1199,8 +1314,12 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final curIdx = _currentEpisodeList.indexWhere((e) => e.slug == _currentEpisode.slug);
+    final hasPrev = curIdx > 0;
     final hasNext = curIdx != -1 && curIdx + 1 < _currentEpisodeList.length;
     final nextEp = hasNext ? _currentEpisodeList[curIdx + 1] : null;
+
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isFullScreen = _isFullScreen || isLandscape;
 
     final showNextEpPrompt = _totalDuration > 60 && (_totalDuration - _currentPosition) <= 90 && hasNext && _autoPlayNext;
 
@@ -1220,12 +1339,14 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                       videoElementId: _webPlayerId,
                       m3u8Url: _currentEpisode.linkM3u8,
                       startPosition: _currentPosition > 0 ? _currentPosition : widget.initialPositionSeconds.toDouble(),
-                      isZoom: _isZoomFit,
+                      isZoom: _aspectRatioMode == AspectRatioMode.zoomCinematic,
                     )
                   : (_nativeController != null && _nativeController!.value.isInitialized
                       ? Center(
                           child: FittedBox(
-                            fit: _isZoomFit ? BoxFit.cover : BoxFit.contain,
+                            fit: _aspectRatioMode == AspectRatioMode.fillScreen
+                                ? BoxFit.fill
+                                : (_aspectRatioMode == AspectRatioMode.zoomCinematic ? BoxFit.cover : BoxFit.contain),
                             child: SizedBox(
                               width: _nativeController!.value.size.width > 0
                                   ? _nativeController!.value.size.width
@@ -1432,20 +1553,187 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
           }
         }
       },
-      child: Scaffold(
-        key: const ValueKey('unified_player_scaffold'),
-        backgroundColor: Colors.black,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 100% Immersive Full-screen Video Player (Chuẩn Netflix)
-            Positioned.fill(child: videoPlayerWidget),
+      child: isFullScreen
+          ? Scaffold(
+              key: const ValueKey('unified_player_scaffold_landscape'),
+              backgroundColor: Colors.black,
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 100% Immersive Full-screen Video Player (Chuẩn Netflix)
+                  Positioned.fill(child: videoPlayerWidget),
 
-            // Slide-in Episode Drawer on demand (for series)
-            if (_showEpisodeDrawer && _currentEpisodeList.length > 1)
-              _buildEpisodeDrawer(),
-          ],
+                  // Slide-in Episode Drawer on demand (for series)
+                  if (_showEpisodeDrawer && _currentEpisodeList.length > 1)
+                    _buildEpisodeDrawer(),
+                ],
+              ),
+            )
+          : Scaffold(
+              key: const ValueKey('unified_player_scaffold_portrait'),
+              backgroundColor: AppColors.background,
+              body: SafeArea(
+                top: true,
+                bottom: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Mobile Portrait: Video Player 16:9 on top
+                    AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: videoPlayerWidget,
+                    ),
+
+                    // 2. Portrait Navigation Bar
+                    _buildPortraitControlsBar(hasPrev, hasNext),
+
+                    // 3. Scrollable Movie Details & Episodes List below
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                        physics: const BouncingScrollPhysics(),
+                        children: [
+                          Text(
+                            widget.movie.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                _currentEpisode.name.toLowerCase().startsWith('tập')
+                                    ? _currentEpisode.name
+                                    : 'Tập ${_currentEpisode.name}',
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (widget.movie.year > 0) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  '•  ${widget.movie.year}',
+                                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                                ),
+                              ],
+                              if (widget.movie.quality.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    widget.movie.quality,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          if (_currentEpisodeList.length > 1) ...[
+                            Text(
+                              'Danh sách tập (${_currentEpisodeList.length})',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            EpisodeGridWidget(
+                              episodes: _currentEpisodeList,
+                              currentEpisodeSlug: _currentEpisode.slug,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              onEpisodeSelected: (ep) => _switchEpisode(ep),
+                            ),
+                          ],
+
+                          if (widget.movie.content.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            const Text(
+                              'Nội dung phim',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              widget.movie.content.replaceAll(RegExp(r'<[^>]*>'), ''),
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 13,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  // Portrait Controls Bar (Quick Previous / Next & Fullscreen button)
+  Widget _buildPortraitControlsBar(bool hasPrev, bool hasNext) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: const BoxDecoration(
+        color: Color(0xFF16181F),
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 0.5),
         ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton.icon(
+                onPressed: hasPrev ? _playPrevEpisode : null,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: hasPrev ? Colors.white : AppColors.textMuted,
+                ),
+                icon: const Icon(Icons.skip_previous_rounded, size: 18),
+                label: const Text('Tập trước', style: TextStyle(fontSize: 12), maxLines: 1),
+              ),
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: hasNext ? _playNextEpisode : null,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: hasNext ? Colors.white : AppColors.textMuted,
+                ),
+                icon: const Icon(Icons.skip_next_rounded, size: 18),
+                label: const Text('Tập tiếp', style: TextStyle(fontSize: 12), maxLines: 1),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 26),
+            tooltip: 'Toàn màn hình',
+            onPressed: _toggleFullScreen,
+          ),
+        ],
       ),
     );
   }
@@ -2120,7 +2408,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                               ),
                               const SizedBox(width: 6),
 
-                              // Aspect ratio toggle button (Fit vs Zoom)
+                              // Aspect ratio toggle button (Fit vs Fill vs Zoom)
                               InkWell(
                                 onTap: _toggleAspectRatio,
                                 borderRadius: BorderRadius.circular(8),
@@ -2131,7 +2419,7 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    _isZoomFit ? 'Zoom' : '16:9',
+                                    _aspectRatioLabel,
                                     style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ),

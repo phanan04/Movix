@@ -43,11 +43,13 @@ class _MovieCommentsWidgetState extends State<MovieCommentsWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Comments List
-        ValueListenableBuilder<List<UserCommentItem>>(
-          valueListenable: _userStorage.commentsNotifier,
-          builder: (context, allComments, _) {
-            final movieComments = allComments.where((c) => c.movieSlug == widget.movieSlug).toList();
+        // Comments List with Real-time Cloud Firestore Streaming
+        StreamBuilder<List<UserCommentItem>>(
+          stream: _userStorage.streamCommentsForMovie(widget.movieSlug),
+          builder: (context, snapshot) {
+            final movieComments = (snapshot.hasData && snapshot.data!.isNotEmpty)
+                ? snapshot.data!
+                : _userStorage.getCommentsForMovie(widget.movieSlug);
 
             if (movieComments.isEmpty) {
               return Container(
@@ -134,6 +136,7 @@ class _MovieCommentsWidgetState extends State<MovieCommentsWidget> {
                                 c.isLiked = !c.isLiked;
                                 c.likes += c.isLiked ? 1 : -1;
                               });
+                              _userStorage.toggleLikeComment(c.id);
                             },
                           ),
                           Text(

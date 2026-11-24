@@ -4,6 +4,11 @@ import '../cache/cache_manager.dart';
 import '../models/movie_model.dart';
 import '../services/tmdb_service.dart';
 
+// Top-level function for background isolate execution via compute()
+List<MovieItem> _parseMovieItemList(List<dynamic> rawItems) {
+  return rawItems.map((e) => MovieItem.fromJson(e as Map<String, dynamic>)).toList();
+}
+
 class PhimApiService {
   static const String primaryApi = 'https://phimapi.com';
   static const String nguonCApi = 'https://phim.nguonc.com/api';
@@ -56,12 +61,21 @@ class PhimApiService {
     });
   }
 
+  // Helper to parse movie lists in background isolate via compute() for 60/120fps UI
+  Future<List<MovieItem>> _parseWithIsolate(List<dynamic> rawItems) async {
+    if (rawItems.isEmpty) return [];
+    if (rawItems.length <= 6) {
+      return _parseMovieItemList(rawItems);
+    }
+    return compute(_parseMovieItemList, rawItems);
+  }
+
   // 1. Phim mới cập nhật
   Future<List<MovieItem>> getNewUpdates({int page = 1}) async {
     final url = '$primaryApi/danh-sach/phim-moi-cap-nhat?page=$page';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 5));
     final rawItems = data['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 2. Phim theo danh mục (phim-bo, phim-le, phim-chieu-rap, hoat-hinh, tv-shows)
@@ -69,7 +83,7 @@ class PhimApiService {
     final url = '$primaryApi/v1/api/danh-sach/$type?page=$page&limit=$limit';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 15));
     final rawItems = data['data']?['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 3. Phim theo thể loại
@@ -77,7 +91,7 @@ class PhimApiService {
     final url = '$primaryApi/v1/api/the-loai/$categorySlug?page=$page&limit=$limit';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 15));
     final rawItems = data['data']?['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 3b. Phim theo quốc gia
@@ -85,7 +99,7 @@ class PhimApiService {
     final url = '$primaryApi/v1/api/quoc-gia/$countrySlug?page=$page&limit=$limit';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 15));
     final rawItems = data['data']?['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 3c. Phim theo năm phát hành
@@ -93,7 +107,7 @@ class PhimApiService {
     final url = '$primaryApi/v1/api/nam/$year?page=$page&limit=$limit';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 15));
     final rawItems = data['data']?['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 3d. Bộ lọc đa chiều chuẩn KKPhim v1 danh-sach
@@ -136,7 +150,7 @@ class PhimApiService {
     final url = '$primaryApi/v1/api/danh-sach/$listType?$query';
     final data = await _fetchWithCache(url, maxAge: const Duration(minutes: 5));
     final rawItems = data['data']?['items'] as List? ?? [];
-    return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+    return _parseWithIsolate(rawItems);
   }
 
   // 4. Tìm kiếm phim song song (KKPhim + VSMov cùng lúc, gộp kết quả và khử trùng lặp)
@@ -173,21 +187,21 @@ class PhimApiService {
 
     // Chạy song song cả 2 nguồn KKPhim & VSMov
     final results = await Future.wait([
-      // Nguồn 1: KKPhim
+      // Nguồn 1: KKPhim (Xử lý đa luồng qua Isolate)
       _fetchWithCache(kkPhimUrl, maxAge: const Duration(minutes: 5))
           .then<List<MovieItem>>((data) {
         final rawItems = data?['data']?['items'] as List? ?? [];
-        return rawItems.map((e) => MovieItem.fromJson(e)).toList();
+        return _parseWithIsolate(rawItems);
       }).catchError((e) {
         debugPrint('KKPhim search error: $e');
         return <MovieItem>[];
       }),
 
-      // Nguồn 2: VSMov
+      // Nguồn 2: VSMov (Xử lý đa luồng qua Isolate)
       _dio.get(vsMovUrl).then<List<MovieItem>>((res) {
         if (res.statusCode == 200 && res.data != null) {
           final items = res.data['items'] as List? ?? [];
-          return items.map((e) => MovieItem.fromJson(e)).toList();
+          return _parseWithIsolate(items);
         }
         return <MovieItem>[];
       }).catchError((e) {
@@ -271,20 +285,32 @@ class PhimApiService {
       } catch (nguonCErr) {
         debugPrint('NguonC fallback error: $nguonCErr. Trying VSMov fallback...');
         // Fallback 2: VSMov
-        final vsMovUrl = '$vsMovApi/phim/$slug';
-        final vsRes = await _dio.get(vsMovUrl);
-        if (vsRes.statusCode == 200 && vsRes.data != null && vsRes.data['movie'] != null) {
-          final movieData = vsRes.data['movie'];
-          final servers = <EpisodeServer>[];
-          if (vsRes.data['episodes'] is List) {
-            for (final s in vsRes.data['episodes']) {
-              if (s is Map<String, dynamic>) {
-                servers.add(EpisodeServer.fromJson(s));
+        try {
+          final vsMovUrl = '$vsMovApi/phim/$slug';
+          final vsRes = await _dio.get(vsMovUrl);
+          if (vsRes.statusCode == 200 && vsRes.data != null && vsRes.data['movie'] != null) {
+            final movieData = vsRes.data['movie'];
+            final servers = <EpisodeServer>[];
+            if (vsRes.data['episodes'] is List) {
+              for (final s in vsRes.data['episodes']) {
+                if (s is Map<String, dynamic>) {
+                  servers.add(EpisodeServer.fromJson(s));
+                }
               }
             }
+            detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
+          } else {
+            throw Exception('Empty movie data on VSMov');
           }
-          detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
-        } else {
+        } catch (_) {
+          // Fallback 3: Tìm kiếm phim theo tên nếu slug trực tiếp không khớp
+          try {
+            final queryTitle = slug.replaceAll('tmdb-', '').replaceAll('-', ' ').trim();
+            final searchResults = await searchMovies(queryTitle, limit: 1);
+            if (searchResults.isNotEmpty && searchResults.first.slug != slug) {
+              return await getMovieDetail(searchResults.first.slug);
+            }
+          } catch (_) {}
           rethrow;
         }
       }
@@ -339,5 +365,79 @@ class PhimApiService {
     }
 
     return detail;
+  }
+
+  // 5. Phim tương tự theo TMDb Recommendations kết hợp Fallback
+  Future<List<MovieItem>> getSimilarMovies(MovieDetail movie) async {
+    final results = <MovieItem>[];
+    final seenSlugs = <String>{movie.slug};
+
+    int? tmdbId = movie.tmdbId;
+    String? mediaType = movie.tmdbMediaType;
+
+    // Nếu movie chưa có tmdbId, tra cứu nhanh qua TmdbService
+    if (tmdbId == null || mediaType == null) {
+      try {
+        final tmdb = await TmdbService().enrichMovie(
+          title: movie.name,
+          originName: movie.originName,
+          year: movie.year > 0 ? movie.year : null,
+          knownActors: movie.actors,
+          knownDirectors: movie.directors,
+        );
+        if (tmdb != null) {
+          tmdbId = tmdb.id;
+          mediaType = tmdb.mediaType;
+        }
+      } catch (e) {
+        debugPrint('TMDB enrich in getSimilarMovies error: $e');
+      }
+    }
+
+    // 1. Nếu có TMDb ID, truy vấn TMDb Recommendations
+    if (tmdbId != null && mediaType != null) {
+      final recTitles = await TmdbService().getRecommendedTitles(
+        tmdbId: tmdbId,
+        mediaType: mediaType,
+      );
+
+      if (recTitles.isNotEmpty) {
+        // Tìm kiếm song song trên kho phim Movix (tối đa 12 tựa phim gợi ý từ TMDb)
+        final searchFutures = recTitles.take(12).map((title) async {
+          try {
+            final searchRes = await searchMovies(title, limit: 1);
+            return searchRes.isNotEmpty ? searchRes.first : null;
+          } catch (_) {
+            return null;
+          }
+        });
+
+        final matchedList = await Future.wait(searchFutures);
+        for (final m in matchedList) {
+          if (m != null && !seenSlugs.contains(m.slug)) {
+            seenSlugs.add(m.slug);
+            results.add(m);
+          }
+        }
+      }
+    }
+
+    // 2. Dự phòng thông minh (Fallback) nếu TMDb trả về ít hơn 8 phim
+    if (results.length < 8) {
+      final categorySlug = movie.categories.isNotEmpty ? movie.categories.first.slug : 'hanh-dong';
+      try {
+        final fallbackMovies = await getMoviesByCategory(categorySlug, page: 1, limit: 16);
+        for (final fb in fallbackMovies) {
+          if (!seenSlugs.contains(fb.slug)) {
+            seenSlugs.add(fb.slug);
+            results.add(fb);
+          }
+        }
+      } catch (e) {
+        debugPrint('Fallback getMoviesByCategory error: $e');
+      }
+    }
+
+    return results;
   }
 }

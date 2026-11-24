@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../../providers/movie_providers.dart';
 import 'home/home_screen.dart';
 import 'explore/explore_screen.dart';
 import 'my_list/my_list_screen.dart';
@@ -9,14 +11,14 @@ import 'profile/profile_screen.dart';
 import 'home/notification_screen.dart';
 import '../widgets/tv_focusable.dart';
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int _currentIndex = 0;
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -174,6 +176,83 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _buildSidebarSourceSwitcher(BuildContext context) {
+    final currentMode = ref.watch(appSourceModeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: PopupMenuButton<AppSourceMode>(
+        tooltip: 'Chuyển nguồn: TMDb / KKPhim',
+        offset: const Offset(62, 0),
+        constraints: const BoxConstraints(minWidth: 130, maxWidth: 160),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0x28FFFFFF), width: 0.8),
+        ),
+        color: const Color(0xFF16181F),
+        elevation: 12,
+        initialValue: currentMode,
+        onSelected: (mode) {
+          ref.read(appSourceModeProvider.notifier).state = mode;
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem<AppSourceMode>(
+            value: AppSourceMode.tmdb,
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  'TMDb',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: currentMode == AppSourceMode.tmdb ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 14.5,
+                  ),
+                ),
+                const Spacer(),
+                if (currentMode == AppSourceMode.tmdb)
+                  const Icon(Icons.check, color: AppColors.primary, size: 18),
+              ],
+            ),
+          ),
+          PopupMenuItem<AppSourceMode>(
+            value: AppSourceMode.kkphim,
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  'KKPhim',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: currentMode == AppSourceMode.kkphim ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 14.5,
+                  ),
+                ),
+                const Spacer(),
+                if (currentMode == AppSourceMode.kkphim)
+                  const Icon(Icons.check, color: AppColors.primary, size: 18),
+              ],
+            ),
+          ),
+        ],
+        child: TVFocusable(
+          onPressed: null,
+          borderRadius: BorderRadius.circular(10),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              'assets/images/logo.png',
+              width: 42,
+              height: 42,
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabletSidebar(BuildContext context) {
     return Container(
       width: 68,
@@ -190,19 +269,8 @@ class _MainScreenState extends State<MainScreen> {
         right: false,
         child: Column(
           children: [
-            // 1. TOP: Logo Movix điện ảnh
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 42,
-                  height: 42,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
+            // 1. TOP: Nút Logo tích hợp Dropdown chuyển nguồn (TMDb / KKPhim)
+            _buildSidebarSourceSwitcher(context),
 
             const Spacer(),
 

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api/phim_api_service.dart';
 import '../core/models/movie_model.dart';
+import '../core/services/tmdb_service.dart';
 
 final apiServiceProvider = Provider<PhimApiService>((ref) {
   return PhimApiService();
@@ -125,6 +126,82 @@ final exploreFilterProvider = NotifierProvider<ExploreFilterNotifier, ExploreFil
   return ExploreFilterNotifier();
 });
 
+// TMDb Filter State Model
+class TmdbFilterState {
+  final String mediaType; // 'all', 'movie', 'tv'
+  final String sortBy; // 'popularity.desc', 'vote_average.desc', 'vote_count.desc', 'primary_release_date.desc', 'revenue.desc'
+  final String genre; // 'all' or genre ID ('28', '12', ...)
+  final String language; // 'all', 'en', 'ko', 'ja', 'zh', 'th', 'fr', 'es', 'de', 'hi', 'vi'
+  final String year; // 'all', '2026', '2025', '2024'...
+  final double minRating; // 0.0, 8.0, 7.0, 6.0
+
+  const TmdbFilterState({
+    this.mediaType = 'movie',
+    this.sortBy = 'popularity.desc',
+    this.genre = 'all',
+    this.language = 'all',
+    this.year = 'all',
+    this.minRating = 0.0,
+  });
+
+  bool get hasActiveFilter =>
+      mediaType != 'movie' ||
+      sortBy != 'popularity.desc' ||
+      genre != 'all' ||
+      language != 'all' ||
+      year != 'all' ||
+      minRating > 0.0;
+
+  TmdbFilterState copyWith({
+    String? mediaType,
+    String? sortBy,
+    String? genre,
+    String? language,
+    String? year,
+    double? minRating,
+  }) {
+    return TmdbFilterState(
+      mediaType: mediaType ?? this.mediaType,
+      sortBy: sortBy ?? this.sortBy,
+      genre: genre ?? this.genre,
+      language: language ?? this.language,
+      year: year ?? this.year,
+      minRating: minRating ?? this.minRating,
+    );
+  }
+}
+
+class TmdbFilterNotifier extends Notifier<TmdbFilterState> {
+  @override
+  TmdbFilterState build() => const TmdbFilterState();
+
+  void updateFilter({
+    String? mediaType,
+    String? sortBy,
+    String? genre,
+    String? language,
+    String? year,
+    double? minRating,
+  }) {
+    state = state.copyWith(
+      mediaType: mediaType,
+      sortBy: sortBy,
+      genre: genre,
+      language: language,
+      year: year,
+      minRating: minRating,
+    );
+  }
+
+  void resetFilter() {
+    state = const TmdbFilterState();
+  }
+}
+
+final tmdbFilterProvider = NotifierProvider<TmdbFilterNotifier, TmdbFilterState>(
+  TmdbFilterNotifier.new,
+);
+
 // Danh sách phim trong Explore Tab with REAL multi-dimensional filters & sorting
 final exploreMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
   final api = ref.watch(apiServiceProvider);
@@ -199,9 +276,130 @@ final searchResultsProvider = FutureProvider<List<MovieItem>>((ref) async {
   );
 });
 
-// Phim tương tự (theo thể loại)
-final similarMoviesProvider = FutureProvider.family<List<MovieItem>, String>((ref, categorySlug) async {
-  if (categorySlug.isEmpty) return [];
+// Phim tương tự (TMDb AI Recommendations + Fallback)
+final similarMoviesProvider = FutureProvider.family<List<MovieItem>, MovieDetail>((ref, movie) async {
   final api = ref.watch(apiServiceProvider);
-  return api.getMoviesByCategory(categorySlug, page: 1, limit: 15);
+  return api.getSimilarMovies(movie);
+});
+
+// Hồ sơ diễn viên & phim đã đóng (TMDb Filmography)
+final personDetailsProvider = FutureProvider.family<TmdbPersonDetails?, int>((ref, personId) async {
+  return TmdbService().getPersonDetails(personId);
+});
+
+// Tìm kiếm hồ sơ diễn viên theo tên
+final personDetailsByNameProvider = FutureProvider.family<TmdbPersonDetails?, String>((ref, name) async {
+  return TmdbService().searchPerson(name);
+});
+
+// Trọn bộ sưu tập / Franchise
+final movieCollectionProvider = FutureProvider.family<TmdbCollection?, int>((ref, collectionId) async {
+  return TmdbService().getCollection(collectionId);
+});
+
+// Đánh giá từ cộng đồng quốc tế (Reviews)
+final movieReviewsProvider = FutureProvider.family<List<TmdbReview>, MovieDetail>((ref, movie) async {
+  if (movie.tmdbId == null || movie.tmdbMediaType == null) return [];
+  return TmdbService().getMovieReviews(movie.tmdbId!, movie.tmdbMediaType!);
+});
+
+// Chế độ nguồn phim chính của ứng dụng: TMDb hoặc KKPhim
+enum AppSourceMode {
+  tmdb,
+  kkphim,
+}
+
+extension AppSourceModeExtension on AppSourceMode {
+  String get label {
+    switch (this) {
+      case AppSourceMode.tmdb:
+        return 'TMDb';
+      case AppSourceMode.kkphim:
+        return 'KKPhim';
+    }
+  }
+}
+
+class AppSourceModeNotifier extends Notifier<AppSourceMode> {
+  @override
+  AppSourceMode build() => AppSourceMode.tmdb;
+
+  void setMode(AppSourceMode mode) => state = mode;
+
+  @override
+  set state(AppSourceMode val) => super.state = val;
+}
+
+final appSourceModeProvider = NotifierProvider<AppSourceModeNotifier, AppSourceMode>(
+  AppSourceModeNotifier.new,
+);
+
+// Các danh mục của Trending Hub (TMDb)
+enum TrendingHubCategory {
+  allWeek, // 🌟 Tất cả (Tuần)
+  allDay,  // ⚡ Hôm nay (24h)
+  movies,  // 🎬 Phim lẻ
+  series,  // 📺 Phim bộ
+  people,  // 🎭 Nghệ sĩ Hot
+}
+
+// Provider lấy phim theo danh mục Trending
+final trendingCategoryMoviesProvider = FutureProvider.family<List<MovieItem>, TrendingHubCategory>((ref, category) async {
+  final api = ref.watch(apiServiceProvider);
+  String mediaType = 'all';
+  String timeWindow = 'week';
+
+  switch (category) {
+    case TrendingHubCategory.allWeek:
+      mediaType = 'all';
+      timeWindow = 'week';
+      break;
+    case TrendingHubCategory.allDay:
+      mediaType = 'all';
+      timeWindow = 'day';
+      break;
+    case TrendingHubCategory.movies:
+      mediaType = 'movie';
+      timeWindow = 'week';
+      break;
+    case TrendingHubCategory.series:
+      mediaType = 'tv';
+      timeWindow = 'week';
+      break;
+    case TrendingHubCategory.people:
+      return [];
+  }
+
+  final titles = await TmdbService().getTrending(mediaType: mediaType, timeWindow: timeWindow);
+  if (titles.isEmpty) return [];
+
+  final futures = titles.take(15).map((t) async {
+    try {
+      final res = await api.searchMovies(t, limit: 1);
+      return res.isNotEmpty ? res.first : null;
+    } catch (_) {
+      return null;
+    }
+  });
+
+  final list = await Future.wait(futures);
+  final seen = <String>{};
+  final results = <MovieItem>[];
+  for (final m in list) {
+    if (m != null && !seen.contains(m.slug)) {
+      seen.add(m.slug);
+      results.add(m);
+    }
+  }
+  return results;
+});
+
+// Provider lấy nghệ sĩ thịnh hành (Trending Persons)
+final trendingPersonsProvider = FutureProvider<List<TmdbCast>>((ref) async {
+  return TmdbService().getTrendingPersons(timeWindow: 'week');
+});
+
+// Phim thịnh hành toàn cầu (TMDb Trending mặc định)
+final trendingMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
+  return ref.watch(trendingCategoryMoviesProvider(TrendingHubCategory.allWeek).future);
 });

@@ -1,4 +1,4 @@
-name: Build and Release Movix (Android & iOS)
+name: Build and Release Movix (Android APK)
 
 on:
   push:
@@ -95,74 +95,10 @@ jobs:
           path: ${{ steps.prepare_apk.outputs.apk_path }}
           retention-days: 7
 
-  build-ios:
-    name: Build iOS IPA
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Flutter Precache iOS
-        run: flutter precache --ios
-
-      - name: Get Dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Install CocoaPods
-        working-directory: app/ios
-        run: pod install --repo-update
-
-      - name: Build iOS App (No Codesign)
-        working-directory: app
-        run: flutter build ios --release --no-codesign
-
-      - name: Package IPA (Payload Archive)
-        id: prepare_ipa
-        run: |
-          RAW_VER=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          TARGET_IPA="Movix-${RAW_VER}.ipa"
-          
-          ORIGINAL_APP=$(find app/build/ios -type d -name "Runner.app" 2>/dev/null | head -n 1)
-          if [ -z "$ORIGINAL_APP" ]; then
-            ORIGINAL_APP=$(find build/ios -type d -name "Runner.app" 2>/dev/null | head -n 1)
-          fi
-          
-          if [ -z "$ORIGINAL_APP" ]; then
-            echo "Error: Runner.app not found!"
-            find . -name "*.app" || true
-            exit 1
-          fi
-          
-          echo "Found app bundle at: $ORIGINAL_APP"
-          mkdir -p Payload
-          cp -r "$ORIGINAL_APP" Payload/
-          zip -r -q "$TARGET_IPA" Payload
-          rm -rf Payload
-          
-          echo "Created named IPA: $TARGET_IPA"
-          echo "ipa_path=${TARGET_IPA}" >> $GITHUB_OUTPUT
-
-      - name: Upload iOS Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-ipa
-          path: ${{ steps.prepare_ipa.outputs.ipa_path }}
-          retention-days: 7
-
   release:
     name: Create GitHub Release
-    needs: [build-android, build-ios]
-    if: always() && (needs.build-android.result == 'success' || needs.build-ios.result == 'success')
+    needs: [build-android]
+    if: always() && needs.build-android.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -205,17 +141,17 @@ jobs:
             
             ### 📦 Tải file cài đặt:
             - **Android (APK)**: Tải file `Movix-${{ steps.version_info.outputs.raw_version }}.apk` để cài đặt trực tiếp trên điện thoại hoặc Android TV.
-            - **iOS (IPA)**: Tải file `Movix-${{ steps.version_info.outputs.raw_version }}.ipa` để cài đặt trên iPhone / iPad thông qua AltStore, Sideloadly, TrollStore, Scarlet, Esign hoặc Xcode.
             
             ---
             
             ### ✨ Những điểm mới & Cải tiến trong bản ${{ steps.version_info.outputs.tag_name }}:
-            - **Bổ sung bộ cài đặt iOS (.ipa)**: Hỗ trợ người dùng thiết bị Apple (iPhone / iPad) cài đặt và trải nghiệm Movix dễ dàng.
-            - **Khắc phục lỗi bắt nhầm phim & diễn viên TMDB**: Bổ sung bộ lọc đối chiếu chéo (Cross-Validation) giữa diễn viên gốc và diễn viên TMDB; loại bỏ tình trạng phim truyền hình Việt Nam bị gán nhầm sang phim ngoại quốc.
+            - **Chuyển đổi nguồn dữ liệu TMDb / KKPhim**: Chuyển đổi linh hoạt giữa kho phim Quốc tế TMDb và kho phim Vietsub KKPhim ngay tại Logo với giao diện tối giản.
+            - **Bộ lọc tìm kiếm thông minh đa chiều**: Tự động chuyển đổi bộ lọc tương ứng với nguồn phim (TMDb hỗ trợ thể loại, ngôn ngữ, năm phát hành, điểm đánh giá, sắp xếp).
+            - **Đồng bộ hóa trải nghiệm**: Tiếp tục xem chung giữa 2 nguồn, Banner tự động cập nhật theo ngữ cảnh.
+            - **Khắc phục lỗi bắt nhầm phim & diễn viên TMDB**: Bổ sung bộ lọc đối chiếu chéo (Cross-Validation) giữa diễn viên gốc và diễn viên TMDB.
             - **Giao diện Diễn viên & Vai diễn thiết kế mới**: Hiển thị dàn diễn viên Việt Nam sang trọng dưới dạng thẻ điện ảnh kèm biểu trưng Avatar chữ lồng (Monogram).
-            - **Chuẩn hóa tỷ lệ khung hình & Bố cục ảnh nền**: Khắc phục hiện tượng ảnh bị méo/co trên một số thiết bị; loại bỏ độ mờ nhân tạo, tối ưu khoảng trống (negative space) và phủ gradient tương phản cao giúp tiêu đề luôn rõ nét.
-            - **Cuộn mượt lên đầu trang (Tap Active Tab to Scroll to Top)**: Bấm vào mục đang xem trên thanh điều hướng dưới cùng để tự động cuộn lên vị trí đầu trang (tương tự trải nghiệm trên YouTube / Facebook).
-            - **Tối ưu kết nối mạng**: Máy chủ nội bộ hỗ trợ lắng nghe trên `0.0.0.0` tương thích hoàn toàn với cả IPv4 và IPv6 (localhost).
+            - **Chuẩn hóa tỷ lệ khung hình & Bố cục ảnh nền**: Khắc phục hiện tượng ảnh bị méo/co trên một số thiết bị; tối ưu khoảng trống và phủ gradient tương phản cao.
+            - **Tối ưu máy chủ nội bộ**: Hỗ trợ lắng nghe trên `0.0.0.0` tương thích hoàn toàn với cả IPv4 và IPv6 (localhost).
           draft: false
           prerelease: false
           generate_release_notes: false

@@ -2,11 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/models/movie_model.dart';
+import '../../../../core/services/tmdb_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../providers/movie_providers.dart';
 import '../../widgets/movie_card.dart';
 import '../../widgets/shimmer_loading.dart';
 import 'widgets/sort_filter_bottom_sheet.dart';
+import 'widgets/tmdb_sort_filter_bottom_sheet.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   final FocusNode? focusNode;
@@ -82,24 +84,40 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     });
 
     try {
-      final api = ref.read(apiServiceProvider);
-      final filter = ref.read(exploreFilterProvider);
+      final sourceMode = ref.read(appSourceModeProvider);
+      List<MovieItem> newMovies = [];
 
-      final apiSortField = (filter.sortField == 'rating' || filter.sortField == 'popular')
-          ? 'modified.time'
-          : filter.sortField;
+      if (sourceMode == AppSourceMode.tmdb) {
+        final tmdbFilter = ref.read(tmdbFilterProvider);
+        newMovies = await TmdbService().discover(
+          mediaType: tmdbFilter.mediaType,
+          sortBy: tmdbFilter.sortBy,
+          genreId: tmdbFilter.genre,
+          originalLanguage: tmdbFilter.language,
+          year: tmdbFilter.year,
+          minRating: tmdbFilter.minRating,
+          page: targetPage,
+        );
+      } else {
+        final api = ref.read(apiServiceProvider);
+        final filter = ref.read(exploreFilterProvider);
 
-      final newMovies = await api.getFilteredMovies(
-        type: filter.type,
-        category: filter.category,
-        country: filter.region,
-        year: filter.year,
-        sortLang: filter.lang,
-        sortField: apiSortField,
-        sortType: filter.sortType,
-        page: targetPage,
-        limit: 24,
-      );
+        final apiSortField = (filter.sortField == 'rating' || filter.sortField == 'popular')
+            ? 'modified.time'
+            : filter.sortField;
+
+        newMovies = await api.getFilteredMovies(
+          type: filter.type,
+          category: filter.category,
+          country: filter.region,
+          year: filter.year,
+          sortLang: filter.lang,
+          sortField: apiSortField,
+          sortType: filter.sortType,
+          page: targetPage,
+          limit: 24,
+        );
+      }
 
       if (mounted) {
         setState(() {
@@ -115,11 +133,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               }
             }
           }
-          if (newMovies.length < 24) {
-            _hasMoreExplore = false;
-          } else {
-            _hasMoreExplore = true;
-          }
+          _hasMoreExplore = newMovies.length >= (sourceMode == AppSourceMode.tmdb ? 18 : 24);
         });
       }
     } catch (e) {
@@ -149,17 +163,29 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     });
 
     try {
-      final api = ref.read(apiServiceProvider);
-      final filter = ref.read(exploreFilterProvider);
+      final sourceMode = ref.read(appSourceModeProvider);
+      List<MovieItem> newMovies = [];
 
-      final newMovies = await api.searchMovies(
-        cleanQ,
-        category: filter.category,
-        country: filter.region,
-        year: filter.year,
-        page: targetPage,
-        limit: 24,
-      );
+      if (sourceMode == AppSourceMode.tmdb) {
+        final tmdbFilter = ref.read(tmdbFilterProvider);
+        newMovies = await TmdbService().searchMulti(
+          cleanQ,
+          page: targetPage,
+          year: tmdbFilter.year != 'all' ? tmdbFilter.year : null,
+        );
+      } else {
+        final api = ref.read(apiServiceProvider);
+        final filter = ref.read(exploreFilterProvider);
+
+        newMovies = await api.searchMovies(
+          cleanQ,
+          category: filter.category,
+          country: filter.region,
+          year: filter.year,
+          page: targetPage,
+          limit: 24,
+        );
+      }
 
       if (mounted) {
         setState(() {
@@ -175,11 +201,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               }
             }
           }
-          if (newMovies.length < 12) {
-            _hasMoreSearch = false;
-          } else {
-            _hasMoreSearch = true;
-          }
+          _hasMoreSearch = newMovies.length >= 12;
         });
       }
     } catch (e) {
@@ -358,11 +380,88 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
+  // Helper nhãn bộ lọc TMDb
+  String _getTmdbMediaTypeLabel(String type) {
+    switch (type) {
+      case 'movie': return 'Phim Điện Ảnh';
+      case 'tv': return 'Series / Phim Bộ';
+      default: return type;
+    }
+  }
+
+  String _getTmdbSortLabel(String sort) {
+    switch (sort) {
+      case 'popularity.desc': return 'Phổ biến nhất';
+      case 'vote_average.desc': return 'Đánh giá cao';
+      case 'vote_count.desc': return 'Nhiều bình chọn';
+      case 'primary_release_date.desc': return 'Mới phát hành';
+      case 'revenue.desc': return 'Doanh thu cao';
+      default: return sort;
+    }
+  }
+
+  String _getTmdbGenreLabel(String id) {
+    switch (id) {
+      case '28': return 'Hành Động';
+      case '12': return 'Phiêu Lưu';
+      case '16': return 'Hoạt Hình';
+      case '35': return 'Hài Hước';
+      case '80': return 'Tội Phạm';
+      case '99': return 'Tài Liệu';
+      case '18': return 'Chính Kịch';
+      case '10751': return 'Gia Đình';
+      case '14': return 'Giả Tưởng';
+      case '36': return 'Lịch Sử';
+      case '27': return 'Kinh Dị';
+      case '10402': return 'Âm Nhạc';
+      case '9648': return 'Bí Ẩn';
+      case '10749': return 'Lãng Mạn';
+      case '878': return 'Khoa Học Viễn Tưởng';
+      case '53': return 'Giật Gân';
+      case '10752': return 'Chiến Tranh';
+      case '37': return 'Miền Tây';
+      default: return id;
+    }
+  }
+
+  String _getTmdbLanguageLabel(String code) {
+    switch (code) {
+      case 'en': return 'Âu Mỹ';
+      case 'ko': return 'Hàn Quốc';
+      case 'ja': return 'Nhật Bản';
+      case 'zh': return 'Trung Quốc';
+      case 'th': return 'Thái Lan';
+      case 'fr': return 'Pháp';
+      case 'es': return 'Tây Ban Nha';
+      case 'de': return 'Đức';
+      case 'hi': return 'Ấn Độ';
+      case 'vi': return 'Việt Nam';
+      default: return code;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final sourceMode = ref.watch(appSourceModeProvider);
     final searchQuery = ref.watch(searchQueryProvider);
     final isSearching = searchQuery.trim().isNotEmpty;
-    final filter = ref.watch(exploreFilterProvider);
+    final kkFilter = ref.watch(exploreFilterProvider);
+    final tmdbFilter = ref.watch(tmdbFilterProvider);
+
+    final hasActiveFilter = sourceMode == AppSourceMode.tmdb
+        ? tmdbFilter.hasActiveFilter
+        : kkFilter.hasActiveFilter;
+
+    // Tự động lắng nghe thay đổi nguồn từ Logo để refresh lại Explore theo đúng nguồn
+    ref.listen<AppSourceMode>(appSourceModeProvider, (prev, next) {
+      if (prev != next) {
+        if (_searchController.text.trim().isNotEmpty) {
+          _fetchSearchMovies(_searchController.text.trim(), isRefresh: true);
+        } else {
+          _fetchExploreMovies(isRefresh: true);
+        }
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -393,12 +492,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               focusNode: _focusNode,
                               onChanged: _onSearchChanged,
                               style: const TextStyle(color: Colors.white, fontSize: 14),
-                              decoration: const InputDecoration(
-                                hintText: 'Tìm kiếm tên phim (tiếng Việt, tiếng Anh)...',
-                                hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                              decoration: InputDecoration(
+                                hintText: sourceMode == AppSourceMode.tmdb
+                                    ? 'Tìm kiếm bom tấn TMDb (tiếng Anh, tiếng Việt)...'
+                                    : 'Tìm kiếm tên phim (tiếng Việt, tiếng Anh)...',
+                                hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 12),
                               ),
                             ),
                           ),
@@ -425,34 +526,59 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         child: IconButton(
                           icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 22),
                           onPressed: () {
-                            SortFilterBottomSheet.show(
-                              context,
-                              initialFilters: {
-                                'sort_field': filter.sortField,
-                                'sort_type': filter.sortType,
-                                'lang': filter.lang,
-                                'type': filter.type,
-                                'category': filter.category,
-                                'region': filter.region,
-                                'year': filter.year,
-                              },
-                              onApply: (filters) {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(
-                                  sortField: filters['sort_field'],
-                                  sortType: filters['sort_type'],
-                                  lang: filters['lang'],
-                                  type: filters['type'],
-                                  category: filters['category'],
-                                  region: filters['region'],
-                                  year: filters['year'],
-                                );
-                                _fetchExploreMovies(isRefresh: true);
-                              },
-                            );
+                            if (sourceMode == AppSourceMode.tmdb) {
+                              TmdbSortFilterBottomSheet.show(
+                                context,
+                                initialFilters: {
+                                  'media_type': tmdbFilter.mediaType,
+                                  'sort_by': tmdbFilter.sortBy,
+                                  'genre': tmdbFilter.genre,
+                                  'language': tmdbFilter.language,
+                                  'year': tmdbFilter.year,
+                                  'min_rating': tmdbFilter.minRating,
+                                },
+                                onApply: (filters) {
+                                  ref.read(tmdbFilterProvider.notifier).updateFilter(
+                                    mediaType: filters['media_type'],
+                                    sortBy: filters['sort_by'],
+                                    genre: filters['genre'],
+                                    language: filters['language'],
+                                    year: filters['year'],
+                                    minRating: filters['min_rating'],
+                                  );
+                                  _fetchExploreMovies(isRefresh: true);
+                                },
+                              );
+                            } else {
+                              SortFilterBottomSheet.show(
+                                context,
+                                initialFilters: {
+                                  'sort_field': kkFilter.sortField,
+                                  'sort_type': kkFilter.sortType,
+                                  'lang': kkFilter.lang,
+                                  'type': kkFilter.type,
+                                  'category': kkFilter.category,
+                                  'region': kkFilter.region,
+                                  'year': kkFilter.year,
+                                },
+                                onApply: (filters) {
+                                  ref.read(exploreFilterProvider.notifier).updateFilter(
+                                    sortField: filters['sort_field'],
+                                    sortType: filters['sort_type'],
+                                    lang: filters['lang'],
+                                    type: filters['type'],
+                                    category: filters['category'],
+                                    region: filters['region'],
+                                    year: filters['year'],
+                                  );
+                                  _fetchExploreMovies(isRefresh: true);
+                                },
+                              );
+                            }
                           },
                         ),
                       ),
-                      if (filter.hasActiveFilter)
+                      if (hasActiveFilter)
                         Positioned(
                           top: 4,
                           right: 4,
@@ -472,7 +598,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
 
             // Active Filter Summary Bar
-            if (filter.hasActiveFilter && !isSearching) ...[
+            if (hasActiveFilter && !isSearching) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
@@ -481,50 +607,87 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: [
-                            if (filter.sortField != 'modified.time' || filter.sortType != 'desc')
-                              _buildActiveFilterChip(
-                                'Sắp xếp: ${_getSortFieldLabel(filter.sortField)} (${filter.sortType == 'desc' ? 'Mới nhất' : 'Cũ nhất'})',
-                                () {
-                                  ref.read(exploreFilterProvider.notifier).updateFilter(
-                                    sortField: 'modified.time',
-                                    sortType: 'desc',
-                                  );
-                                  _fetchExploreMovies(isRefresh: true);
-                                },
-                              ),
-                            if (filter.lang != 'all')
-                              _buildActiveFilterChip('Ngôn ngữ: ${_getLangLabel(filter.lang)}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(lang: 'all');
-                                _fetchExploreMovies(isRefresh: true);
-                              }),
-                            if (filter.type != 'all')
-                              _buildActiveFilterChip('Loại: ${_getTypeLabel(filter.type)}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(type: 'all');
-                                _fetchExploreMovies(isRefresh: true);
-                              }),
-                            if (filter.category != 'all')
-                              _buildActiveFilterChip('Thể loại: ${_getCategoryLabel(filter.category)}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
-                                _fetchExploreMovies(isRefresh: true);
-                              }),
-                            if (filter.region != 'all')
-                              _buildActiveFilterChip('Quốc gia: ${_getRegionLabel(filter.region)}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(region: 'all');
-                                _fetchExploreMovies(isRefresh: true);
-                              }),
-                            if (filter.year != 'all')
-                              _buildActiveFilterChip('Năm: ${filter.year}', () {
-                                ref.read(exploreFilterProvider.notifier).updateFilter(year: 'all');
-                                _fetchExploreMovies(isRefresh: true);
-                              }),
-                          ],
+                          children: sourceMode == AppSourceMode.tmdb
+                              ? [
+                                  if (tmdbFilter.mediaType != 'movie')
+                                    _buildActiveFilterChip('Loại: ${_getTmdbMediaTypeLabel(tmdbFilter.mediaType)}', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(mediaType: 'movie');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (tmdbFilter.sortBy != 'popularity.desc')
+                                    _buildActiveFilterChip('Sắp xếp: ${_getTmdbSortLabel(tmdbFilter.sortBy)}', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(sortBy: 'popularity.desc');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (tmdbFilter.genre != 'all')
+                                    _buildActiveFilterChip('Thể loại: ${_getTmdbGenreLabel(tmdbFilter.genre)}', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(genre: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (tmdbFilter.language != 'all')
+                                    _buildActiveFilterChip('Quốc gia: ${_getTmdbLanguageLabel(tmdbFilter.language)}', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(language: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (tmdbFilter.year != 'all')
+                                    _buildActiveFilterChip('Năm: ${tmdbFilter.year}', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(year: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (tmdbFilter.minRating > 0.0)
+                                    _buildActiveFilterChip('Điểm: ${tmdbFilter.minRating}+ ★', () {
+                                      ref.read(tmdbFilterProvider.notifier).updateFilter(minRating: 0.0);
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                ]
+                              : [
+                                  if (kkFilter.sortField != 'modified.time' || kkFilter.sortType != 'desc')
+                                    _buildActiveFilterChip(
+                                      'Sắp xếp: ${_getSortFieldLabel(kkFilter.sortField)} (${kkFilter.sortType == 'desc' ? 'Mới nhất' : 'Cũ nhất'})',
+                                      () {
+                                        ref.read(exploreFilterProvider.notifier).updateFilter(
+                                          sortField: 'modified.time',
+                                          sortType: 'desc',
+                                        );
+                                        _fetchExploreMovies(isRefresh: true);
+                                      },
+                                    ),
+                                  if (kkFilter.lang != 'all')
+                                    _buildActiveFilterChip('Ngôn ngữ: ${_getLangLabel(kkFilter.lang)}', () {
+                                      ref.read(exploreFilterProvider.notifier).updateFilter(lang: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (kkFilter.type != 'all')
+                                    _buildActiveFilterChip('Loại: ${_getTypeLabel(kkFilter.type)}', () {
+                                      ref.read(exploreFilterProvider.notifier).updateFilter(type: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (kkFilter.category != 'all')
+                                    _buildActiveFilterChip('Thể loại: ${_getCategoryLabel(kkFilter.category)}', () {
+                                      ref.read(exploreFilterProvider.notifier).updateFilter(category: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (kkFilter.region != 'all')
+                                    _buildActiveFilterChip('Quốc gia: ${_getRegionLabel(kkFilter.region)}', () {
+                                      ref.read(exploreFilterProvider.notifier).updateFilter(region: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                  if (kkFilter.year != 'all')
+                                    _buildActiveFilterChip('Năm: ${kkFilter.year}', () {
+                                      ref.read(exploreFilterProvider.notifier).updateFilter(year: 'all');
+                                      _fetchExploreMovies(isRefresh: true);
+                                    }),
+                                ],
                         ),
                       ),
                     ),
                     TextButton(
                       onPressed: () {
-                        ref.read(exploreFilterProvider.notifier).resetFilter();
+                        if (sourceMode == AppSourceMode.tmdb) {
+                          ref.read(tmdbFilterProvider.notifier).resetFilter();
+                        } else {
+                          ref.read(exploreFilterProvider.notifier).resetFilter();
+                        }
                         _fetchExploreMovies(isRefresh: true);
                       },
                       style: TextButton.styleFrom(

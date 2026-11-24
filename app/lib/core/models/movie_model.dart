@@ -212,6 +212,59 @@ class MovieItem {
     );
   }
 
+  factory MovieItem.fromTmdb(Map<String, dynamic> json, {String mediaType = 'movie'}) {
+    final title = json['title']?.toString() ?? json['name']?.toString() ?? '';
+    final originalTitle = json['original_title']?.toString() ?? json['original_name']?.toString() ?? title;
+    final posterPath = json['poster_path']?.toString();
+    final backdropPath = json['backdrop_path']?.toString();
+    final releaseDate = json['release_date']?.toString() ?? json['first_air_date']?.toString() ?? '';
+    final year = int.tryParse(releaseDate.split('-').first) ?? 2024;
+    final vote = (json['vote_average'] is num) ? (json['vote_average'] as num).toDouble() : 0.0;
+    final id = json['id']?.toString() ?? '';
+
+    // Tạo slug chuẩn từ tiêu đề
+    String genSlug(String text) {
+      var s = text.toLowerCase().trim();
+      s = s.replaceAll(RegExp(r'[àáạảãâầấậẩẫăằắặẳẵ]'), 'a');
+      s = s.replaceAll(RegExp(r'[èéẹẻẽêềếệểễ]'), 'e');
+      s = s.replaceAll(RegExp(r'[ìíịỉĩ]'), 'i');
+      s = s.replaceAll(RegExp(r'[òóọỏõôồốộổỗơờớợởỡ]'), 'o');
+      s = s.replaceAll(RegExp(r'[ùúụủũưừứựửữ]'), 'u');
+      s = s.replaceAll(RegExp(r'[ỳýỵỷỹ]'), 'y');
+      s = s.replaceAll(RegExp(r'[đ]'), 'd');
+      s = s.replaceAll(RegExp(r'[^a-z0-9\s-]'), '');
+      s = s.replaceAll(RegExp(r'\s+'), '-');
+      s = s.replaceAll(RegExp(r'-+'), '-');
+      return s;
+    }
+
+    final slug = genSlug(originalTitle.isNotEmpty ? originalTitle : title);
+    final poster = (posterPath != null && posterPath.isNotEmpty)
+        ? 'https://image.tmdb.org/t/p/w500$posterPath'
+        : '';
+    final backdrop = (backdropPath != null && backdropPath.isNotEmpty)
+        ? 'https://image.tmdb.org/t/p/w780$backdropPath'
+        : poster;
+
+    final determinedMediaType = json['media_type']?.toString() ?? mediaType;
+
+    return MovieItem(
+      id: id,
+      name: title.isNotEmpty ? title : originalTitle,
+      originName: originalTitle,
+      slug: slug.isNotEmpty ? slug : 'tmdb-$id',
+      thumbUrl: backdrop,
+      posterUrl: poster,
+      year: year,
+      episodeCurrent: determinedMediaType == 'tv' ? 'Series' : 'Full',
+      quality: vote > 0 ? '${vote.toStringAsFixed(1)} ★' : 'FHD',
+      lang: 'Quốc Tế',
+      time: releaseDate,
+      categoryNames: const [],
+      voteAverage: vote,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     '_id': id,
     'name': name,
@@ -252,6 +305,14 @@ class MovieDetail {
   final double tmdbVoteAverage;
   final int tmdbVoteCount;
   final List<TmdbCast> tmdbCast;
+  final int? tmdbId;
+  final String? tmdbMediaType;
+  final String? clearLogoUrl;
+  final int? collectionId;
+  final String? collectionName;
+  final String? collectionBackdrop;
+  final List<TmdbCompany> networks;
+  final List<TmdbCompany> productionCompanies;
 
   const MovieDetail({
     required this.id,
@@ -277,6 +338,14 @@ class MovieDetail {
     this.tmdbVoteAverage = 0.0,
     this.tmdbVoteCount = 0,
     this.tmdbCast = const [],
+    this.tmdbId,
+    this.tmdbMediaType,
+    this.clearLogoUrl,
+    this.collectionId,
+    this.collectionName,
+    this.collectionBackdrop,
+    this.networks = const [],
+    this.productionCompanies = const [],
   });
 
   MovieDetail copyWithTmdb(TmdbMovieData tmdb) {
@@ -304,6 +373,14 @@ class MovieDetail {
       tmdbVoteAverage: tmdb.voteAverage,
       tmdbVoteCount: tmdb.voteCount,
       tmdbCast: tmdb.cast,
+      tmdbId: tmdb.id,
+      tmdbMediaType: tmdb.mediaType,
+      clearLogoUrl: tmdb.clearLogoUrl,
+      collectionId: tmdb.collectionId,
+      collectionName: tmdb.collectionName,
+      collectionBackdrop: tmdb.collectionBackdrop,
+      networks: tmdb.networks,
+      productionCompanies: tmdb.productionCompanies,
     );
   }
 
@@ -332,8 +409,24 @@ class MovieDetail {
       tmdbVoteAverage: tmdbVoteAverage,
       tmdbVoteCount: tmdbVoteCount,
       tmdbCast: tmdbCast,
+      tmdbId: tmdbId,
+      tmdbMediaType: tmdbMediaType,
+      clearLogoUrl: clearLogoUrl,
+      collectionId: collectionId,
+      collectionName: collectionName,
+      collectionBackdrop: collectionBackdrop,
+      networks: networks,
+      productionCompanies: productionCompanies,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MovieDetail && runtimeType == other.runtimeType && slug == other.slug;
+
+  @override
+  int get hashCode => slug.hashCode;
 
   String get fullThumbUrl {
     if (thumbUrl.isEmpty) return '';

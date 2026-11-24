@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAG7-WHssg6cq45HsRbfau-O6Hlb8u4nkk</string>
+	<key>GCM_SENDER_ID</key>
+	<string>453442498600</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.twophim.movix.movix</string>
+	<key>PROJECT_ID</key>
+	<string>movix-766ca</string>
+	<key>STORAGE_BUCKET</key>
+	<string>movix-766ca.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:453442498600:ios:8813f7bc41aa7741b6451d</string>
+	<key>CLIENT_ID</key>
+	<string>453442498600-q0j5biup1e99knncbeaa6orra42ov337.apps.googleusercontent.com</string>
+</dict>
+</plist>

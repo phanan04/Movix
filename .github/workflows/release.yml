@@ -111,9 +111,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Flutter Precache iOS
+        run: flutter precache --ios
+
       - name: Get Dependencies
         working-directory: app
         run: flutter pub get
+
+      - name: Install CocoaPods
+        working-directory: app/ios
+        run: pod install --repo-update
 
       - name: Build iOS App (No Codesign)
         working-directory: app
@@ -125,9 +132,20 @@ jobs:
           RAW_VER=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
           TARGET_IPA="Movix-${RAW_VER}.ipa"
           
-          # Đóng gói Payload chứa Runner.app thành file IPA chuẩn cho Sideloading
+          ORIGINAL_APP=$(find app/build/ios -type d -name "Runner.app" 2>/dev/null | head -n 1)
+          if [ -z "$ORIGINAL_APP" ]; then
+            ORIGINAL_APP=$(find build/ios -type d -name "Runner.app" 2>/dev/null | head -n 1)
+          fi
+          
+          if [ -z "$ORIGINAL_APP" ]; then
+            echo "Error: Runner.app not found!"
+            find . -name "*.app" || true
+            exit 1
+          fi
+          
+          echo "Found app bundle at: $ORIGINAL_APP"
           mkdir -p Payload
-          cp -r app/build/ios/iphoneos/Runner.app Payload/
+          cp -r "$ORIGINAL_APP" Payload/
           zip -r -q "$TARGET_IPA" Payload
           rm -rf Payload
           
@@ -144,6 +162,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [build-android, build-ios]
+    if: always() && (needs.build-android.result == 'success' || needs.build-ios.result == 'success')
     runs-on: ubuntu-latest
 
     steps:
@@ -152,6 +171,7 @@ jobs:
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: release-assets
           merge-multiple: true
@@ -169,7 +189,7 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "raw_version=${RAW_VER}" >> $GITHUB_OUTPUT
           echo "Assets to publish:"
-          ls -lh release-assets/
+          ls -lh release-assets/ || true
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2

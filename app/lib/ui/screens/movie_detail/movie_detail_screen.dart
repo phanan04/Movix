@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/cache/user_storage.dart';
@@ -170,14 +169,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                  child: CachedPosterImage(
-                    imageUrl: movie.backdropUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 720,
-                    memCacheHeight: 960,
-                  ),
+                CachedPosterImage(
+                  imageUrl: movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl,
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0.0, -0.15),
                 ),
                 Container(
                   color: Colors.black.withValues(alpha: 0.18),
@@ -569,17 +564,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Hero Backdrop tràn viền toàn màn hình (Dưới cùng) với hiệu ứng làm mịn chống vỡ hạt
+            // 1. Hero Backdrop tràn viền toàn màn hình (Dưới cùng) độ nét cao chuẩn điện ảnh
             Positioned.fill(
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                child: CachedPosterImage(
-                  imageUrl: movie.backdropUrl,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
+              child: CachedPosterImage(
+                imageUrl: movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl,
+                fit: BoxFit.cover,
+                alignment: const Alignment(0.15, -0.05),
+                width: double.infinity,
+                height: double.infinity,
               ),
             ),
 

@@ -20,13 +20,61 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   final FocusNode _searchFocusNode = FocusNode();
 
+  // Scroll controllers cho 5 tab điều hướng chuẩn trải nghiệm YouTube, Facebook, Twitter
+  // Nhấn vào tab đang chọn -> cuộn mượt mà lên đầu trang
+  final ScrollController _homeScrollController = ScrollController();
+  final ScrollController _exploreScrollController = ScrollController();
+  final ScrollController _myListFavScrollController = ScrollController();
+  final ScrollController _myListHistScrollController = ScrollController();
+  final ScrollController _downloadScrollController = ScrollController();
+  final ScrollController _profileScrollController = ScrollController();
+
   @override
   void dispose() {
     _searchFocusNode.dispose();
+    _homeScrollController.dispose();
+    _exploreScrollController.dispose();
+    _myListFavScrollController.dispose();
+    _myListHistScrollController.dispose();
+    _downloadScrollController.dispose();
+    _profileScrollController.dispose();
     super.dispose();
   }
 
+  void _scrollToTop(ScrollController controller) {
+    if (controller.hasClients) {
+      controller.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   void _switchTab(int index, {bool requestFocus = false}) {
+    if (_currentIndex == index) {
+      // Khi người dùng bấm vào tab hiện tại -> cuộn mượt lên đầu (chuẩn YouTube / Facebook)
+      switch (index) {
+        case 0:
+          _scrollToTop(_homeScrollController);
+          break;
+        case 1:
+          _scrollToTop(_exploreScrollController);
+          break;
+        case 2:
+          _scrollToTop(_myListFavScrollController);
+          _scrollToTop(_myListHistScrollController);
+          break;
+        case 3:
+          _scrollToTop(_downloadScrollController);
+          break;
+        case 4:
+          _scrollToTop(_profileScrollController);
+          break;
+      }
+      return;
+    }
+
     setState(() {
       _currentIndex = index;
     });
@@ -197,11 +245,25 @@ class _MainScreenState extends State<MainScreen> {
     final isTabletLandscape = media.size.shortestSide >= 600 || (kIsWeb && media.size.width >= 900);
 
     final pages = [
-      HomeScreen(onSearchTap: () => _switchTab(1, requestFocus: true)),
-      ExploreScreen(focusNode: _searchFocusNode),
-      const MyListScreen(),
-      DownloadScreen(onExploreTap: () => _switchTab(1, requestFocus: false)),
-      const ProfileScreen(),
+      HomeScreen(
+        onSearchTap: () => _switchTab(1, requestFocus: true),
+        scrollController: _homeScrollController,
+      ),
+      ExploreScreen(
+        focusNode: _searchFocusNode,
+        scrollController: _exploreScrollController,
+      ),
+      MyListScreen(
+        scrollController: _myListFavScrollController,
+        historyScrollController: _myListHistScrollController,
+      ),
+      DownloadScreen(
+        onExploreTap: () => _switchTab(1, requestFocus: false),
+        scrollController: _downloadScrollController,
+      ),
+      ProfileScreen(
+        scrollController: _profileScrollController,
+      ),
     ];
 
     if (isTabletLandscape) {

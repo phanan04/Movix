@@ -48,13 +48,15 @@ class _HeroBannerState extends State<HeroBanner> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Background Image: Dùng ảnh ngang 16:9 (backdropUrl) cho màn hình rộng/TV/Landscape, poster dọc (verticalPosterUrl) cho mobile dọc
+            // 1. Background Image: Chọn ảnh thông minh theo layout, tỷ lệ màn hình & bố cục negative space
+            // - Màn hình rộng/Landscape/TV: dùng ảnh ngang 16:9 (backdropUrl), căn lệch nhẹ sang phải để chừa khoảng trống bên trái cho tiêu đề & nút bấm
+            // - Màn hình dọc/Mobile: dùng poster dọc (verticalPosterUrl), căn topCenter để bảo toàn gương mặt nhân vật không bị cắt
             CachedPosterImage(
-              imageUrl: isWide ? movie.backdropUrl : movie.verticalPosterUrl,
+              imageUrl: isWide
+                  ? (movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl)
+                  : (movie.verticalPosterUrl.isNotEmpty ? movie.verticalPosterUrl : movie.backdropUrl),
               fit: BoxFit.cover,
-              alignment: isWide ? Alignment.center : Alignment.topCenter,
-              memCacheWidth: 1280,
-              memCacheHeight: 720,
+              alignment: isWide ? const Alignment(0.15, -0.05) : const Alignment(0.0, -0.15),
             ),
 
             // 2. Lớp gradient ngang (LinearGradient từ trái sang) trên màn hình rộng chuẩn Netflix

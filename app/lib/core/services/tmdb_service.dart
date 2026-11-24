@@ -83,6 +83,18 @@ class TmdbService {
     );
   }
 
+  /// Chuẩn hóa chuỗi văn bản (bỏ dấu tiếng Việt, ký tự đặc biệt) để so khớp chính xác
+  String _normalizeText(String raw) {
+    var s = raw.toLowerCase().trim();
+    const withDia = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const withoutDia = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+    for (int i = 0; i < withDia.length; i++) {
+      s = s.replaceAll(withDia[i], withoutDia[i]);
+    }
+    s = s.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    return s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
   /// Làm sạch tên phim để tìm kiếm chính xác trên TMDB
   String _sanitizeTitle(String raw) {
     var cleaned = raw.split('/').first;
@@ -95,10 +107,13 @@ class TmdbService {
   }
 
   /// Tra cứu bổ sung thông tin từ TMDB (Backdrop 4K, Poster HD, Cast có ảnh, Rating thật, Trailer)
+  /// Có cơ chế Cross-Validation nghiêm ngặt đối chiếu diễn viên/đạo diễn để ngăn chặn việc bắt nhầm phim
   Future<TmdbMovieData?> enrichMovie({
     required String title,
     String? originName,
     int? year,
+    List<String> knownActors = const [],
+    List<String> knownDirectors = const [],
   }) async {
     final cacheKey = '${title}_${originName ?? ''}_${year ?? ''}'.toLowerCase();
     if (_memoryCache.containsKey(cacheKey)) {
@@ -107,10 +122,25 @@ class TmdbService {
 
     try {
       final queriesToTry = <String>[];
-      if (originName != null && originName.trim().isNotEmpty && originName != title) {
-        queriesToTry.add(_sanitizeTitle(originName));
+      final cleanTitle = _sanitizeTitle(title);
+      final cleanOrigin = originName != null ? _sanitizeTitle(originName) : '';
+
+      // 1. Ưu tiên tìm theo tên chính trước
+      if (cleanTitle.isNotEmpty) {
+        queriesToTry.add(cleanTitle);
       }
-      queriesToTry.add(_sanitizeTitle(title));
+
+      // 2. Tên gốc originName chỉ tìm khi có từ 2 từ trở lên hoặc khác biệt rõ rệt
+      // Tránh các từ đơn lẻ như "Hamlet", "Home", "Run", "Love" bị dịch bừa từ tên tiếng Việt
+      if (cleanOrigin.isNotEmpty && cleanOrigin != cleanTitle) {
+        final originWords = cleanOrigin.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+        if (originWords.length > 1 || cleanOrigin.length >= 8) {
+          queriesToTry.add(cleanOrigin);
+        } else if (queriesToTry.isEmpty) {
+          // Chỉ thêm từ đơn nếu chưa có query nào
+          queriesToTry.add(cleanOrigin);
+        }
+      }
 
       Map<String, dynamic>? bestResult;
       String mediaType = 'movie';
@@ -171,6 +201,76 @@ class TmdbService {
 
       final data = detailRes.data;
 
+      // ==========================================
+      // GUARDRAIL: CROSS-VALIDATION ĐỐI CHIẾU DIỄN VIÊN / TIÊU ĐỀ
+      // ==========================================
+      final rawCast = data['credits']?['cast'] as List? ?? [];
+      final rawCrew = data['credits']?['crew'] as List? ?? [];
+
+      final validKnownActors = knownActors
+          .map(_normalizeText)
+          .where((s) => s.isNotEmpty && s.length > 2)
+          .toList();
+      final validKnownDirectors = knownDirectors
+          .map(_normalizeText)
+          .where((s) => s.isNotEmpty && s.length > 2)
+          .toList();
+
+      if (validKnownActors.length >= 2) {
+        final tmdbPeople = <String>[];
+        for (final c in rawCast.take(15)) {
+          if (c is Map && c['name'] != null) {
+            tmdbPeople.add(_normalizeText(c['name'].toString()));
+          }
+        }
+        for (final c in rawCrew.take(10)) {
+          if (c is Map && c['name'] != null && (c['job'] == 'Director' || c['department'] == 'Directing')) {
+            tmdbPeople.add(_normalizeText(c['name'].toString()));
+          }
+        }
+
+        bool hasPersonMatch = false;
+        for (final ka in validKnownActors) {
+          for (final tp in tmdbPeople) {
+            if (ka == tp || (ka.length > 4 && tp.contains(ka)) || (tp.length > 4 && ka.contains(tp))) {
+              hasPersonMatch = true;
+              break;
+            }
+          }
+          if (hasPersonMatch) break;
+        }
+
+        if (!hasPersonMatch) {
+          for (final kd in validKnownDirectors) {
+            for (final tp in tmdbPeople) {
+              if (kd == tp || (kd.length > 4 && tp.contains(kd)) || (tp.length > 4 && kd.contains(tp))) {
+                hasPersonMatch = true;
+                break;
+              }
+            }
+            if (hasPersonMatch) break;
+          }
+        }
+
+        // Nếu KHÔNG có bất kỳ diễn viên hoặc đạo diễn nào trùng khớp
+        if (!hasPersonMatch) {
+          final tmdbTitle = _normalizeText(data['title']?.toString() ?? data['name']?.toString() ?? '');
+          final tmdbOrigTitle = _normalizeText(data['original_title']?.toString() ?? data['original_name']?.toString() ?? '');
+          final normTitle = _normalizeText(title);
+          final normOrig = originName != null ? _normalizeText(originName) : '';
+
+          final titleMatches = normTitle.isNotEmpty && (tmdbTitle == normTitle || tmdbOrigTitle == normTitle);
+          final origMatches = normOrig.isNotEmpty &&
+              normOrig.split(' ').length > 1 &&
+              (tmdbTitle == normOrig || tmdbOrigTitle == normOrig);
+
+          if (!titleMatches && !origMatches) {
+            debugPrint('TMDB Match REJECTED for "$title": 0/${validKnownActors.length} actors matched. TMDB: "$tmdbTitle" ($tmdbId)');
+            return null;
+          }
+        }
+      }
+
       // Backdrop HD (w1280)
       final rawBackdrop = data['backdrop_path']?.toString();
       final backdropUrl = (rawBackdrop != null && rawBackdrop.isNotEmpty)
@@ -187,7 +287,6 @@ class TmdbService {
       final voteCount = (data['vote_count'] is int) ? data['vote_count'] as int : 0;
 
       // Diễn viên (Top 12)
-      final rawCast = data['credits']?['cast'] as List? ?? [];
       final castList = <TmdbCast>[];
       for (final c in rawCast.take(12)) {
         if (c is Map<String, dynamic>) {

@@ -10,7 +10,12 @@ import 'widgets/sort_filter_bottom_sheet.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   final FocusNode? focusNode;
-  const ExploreScreen({super.key, this.focusNode});
+  final ScrollController? scrollController;
+  const ExploreScreen({
+    super.key,
+    this.focusNode,
+    this.scrollController,
+  });
 
   @override
   ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
@@ -18,7 +23,7 @@ class ExploreScreen extends ConsumerStatefulWidget {
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  late final ScrollController _scrollController;
   Timer? _debounceTimer;
   late FocusNode _focusNode;
 
@@ -40,6 +45,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void initState() {
     super.initState();
     _focusNode = widget.focusNode ?? FocusNode();
+    _scrollController = widget.scrollController ?? ScrollController();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchExploreMovies(isRefresh: true);
@@ -204,7 +210,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _searchController.dispose();
     _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    if (widget.scrollController == null) {
+      _scrollController.dispose();
+    }
     if (widget.focusNode == null) {
       _focusNode.dispose();
     }

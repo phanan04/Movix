@@ -19,7 +19,9 @@ import '../settings/privacy_policy_screen.dart';
 import '../../widgets/app_toast.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final ScrollController? scrollController;
+
+  const ProfileScreen({super.key, this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +37,7 @@ class ProfileScreen extends StatelessWidget {
           await UserStorage().init();
         },
         child: ListView(
+          controller: scrollController,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           children: [

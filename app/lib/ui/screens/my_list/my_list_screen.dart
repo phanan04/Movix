@@ -7,7 +7,14 @@ import '../../widgets/cached_poster_image.dart';
 import '../movie_detail/movie_detail_screen.dart';
 
 class MyListScreen extends StatefulWidget {
-  const MyListScreen({super.key});
+  final ScrollController? scrollController;
+  final ScrollController? historyScrollController;
+
+  const MyListScreen({
+    super.key,
+    this.scrollController,
+    this.historyScrollController,
+  });
 
   @override
   State<MyListScreen> createState() => _MyListScreenState();
@@ -70,6 +77,7 @@ class _MyListScreenState extends State<MyListScreen> with SingleTickerProviderSt
         builder: (context, movies, _) {
           if (movies.isEmpty) {
             return ListView(
+              controller: widget.scrollController,
               physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               children: [
                 SizedBox(
@@ -106,6 +114,7 @@ class _MyListScreenState extends State<MyListScreen> with SingleTickerProviderSt
                       : (constraints.maxWidth >= 480 ? 3 : 2));
 
               return GridView.builder(
+                controller: widget.scrollController,
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -138,6 +147,7 @@ class _MyListScreenState extends State<MyListScreen> with SingleTickerProviderSt
         builder: (context, historyList, _) {
           if (historyList.isEmpty) {
             return ListView(
+              controller: widget.historyScrollController,
               physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               children: [
                 SizedBox(
@@ -166,6 +176,7 @@ class _MyListScreenState extends State<MyListScreen> with SingleTickerProviderSt
           }
 
           return ListView.separated(
+            controller: widget.historyScrollController,
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
             itemCount: historyList.length,

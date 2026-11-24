@@ -11,8 +11,13 @@ import 'widgets/movie_carousel.dart';
 
 class HomeScreen extends ConsumerWidget {
   final VoidCallback? onSearchTap;
+  final ScrollController? scrollController;
 
-  const HomeScreen({super.key, this.onSearchTap});
+  const HomeScreen({
+    super.key,
+    this.onSearchTap,
+    this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -90,6 +95,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(tvShowsMoviesProvider);
         },
         child: CustomScrollView(
+          controller: scrollController,
           physics: const BouncingScrollPhysics(),
           slivers: [
             // 1. Hero Banner

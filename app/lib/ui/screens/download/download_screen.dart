@@ -3,8 +3,13 @@ import '../../../core/theme/app_colors.dart';
 
 class DownloadScreen extends StatelessWidget {
   final VoidCallback? onExploreTap;
+  final ScrollController? scrollController;
 
-  const DownloadScreen({super.key, this.onExploreTap});
+  const DownloadScreen({
+    super.key,
+    this.onExploreTap,
+    this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +25,7 @@ class DownloadScreen extends StatelessWidget {
           await Future.delayed(const Duration(milliseconds: 300));
         },
         child: ListView(
+          controller: scrollController,
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           children: [
             SizedBox(

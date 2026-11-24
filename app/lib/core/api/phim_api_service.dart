@@ -328,6 +328,8 @@ class PhimApiService {
         title: detail.name,
         originName: detail.originName,
         year: detail.year,
+        knownActors: detail.actors,
+        knownDirectors: detail.directors,
       ).timeout(const Duration(milliseconds: 1500));
       if (tmdb != null) {
         detail = detail.copyWithTmdb(tmdb);

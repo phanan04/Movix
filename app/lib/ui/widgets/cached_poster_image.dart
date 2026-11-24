@@ -11,8 +11,8 @@ class CachedPosterImage extends StatelessWidget {
   final BoxFit fit;
   final Alignment alignment;
   final BorderRadius? borderRadius;
-  final int memCacheWidth;
-  final int memCacheHeight;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
 
   const CachedPosterImage({
     super.key,
@@ -22,8 +22,8 @@ class CachedPosterImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
     this.borderRadius,
-    this.memCacheWidth = 320,
-    this.memCacheHeight = 480,
+    this.memCacheWidth,
+    this.memCacheHeight,
   });
 
   String _getProcessedUrl(String url) {

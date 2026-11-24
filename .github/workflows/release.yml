@@ -1,4 +1,4 @@
-name: Build and Release Movix APK
+name: Build and Release Movix (Android & iOS)
 
 on:
   push:
@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Release APK
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,6 @@ jobs:
         run: |
           mkdir -p app/android/app/keystore
           mkdir -p app/android/keystore
-          # Kiểm tra nếu keystore movix.jks chưa có alias movix thì tự động tạo chuẩn bằng keytool
           if [ ! -f app/android/app/keystore/movix.jks ] || ! keytool -list -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix > /dev/null 2>&1; then
             echo "Generating valid release keystore with alias movix..."
             rm -f app/android/app/keystore/movix.jks
@@ -59,10 +58,6 @@ jobs:
               -storetype PKCS12
           fi
           cp -f app/android/app/keystore/movix.jks app/android/keystore/movix.jks
-          echo "Verifying keystore contents:"
-          keytool -list -v -keystore app/android/app/keystore/movix.jks -storepass movix123456 -alias movix
-
-          # Tạo file key.properties chuẩn
           cat << 'EOF' > app/android/key.properties
           storePassword=movix123456
           keyPassword=movix123456
@@ -78,8 +73,91 @@ jobs:
         working-directory: app
         run: flutter build apk --release
 
-      - name: Determine Version and Prepare Named APK
+      - name: Prepare Named APK
         id: prepare_apk
+        run: |
+          RAW_VER=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          ORIGINAL_APK=$(find app -type f -name "*release*.apk" | head -n 1)
+          if [ -z "$ORIGINAL_APK" ]; then
+            echo "Error: Release APK not found!"
+            find app -name "*.apk" || true
+            exit 1
+          fi
+          TARGET_APK="Movix-${RAW_VER}.apk"
+          cp "$ORIGINAL_APK" "$TARGET_APK"
+          echo "Created named APK: $TARGET_APK"
+          echo "apk_path=${TARGET_APK}" >> $GITHUB_OUTPUT
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ steps.prepare_apk.outputs.apk_path }}
+          retention-days: 7
+
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build iOS App (No Codesign)
+        working-directory: app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package IPA (Payload Archive)
+        id: prepare_ipa
+        run: |
+          RAW_VER=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          TARGET_IPA="Movix-${RAW_VER}.ipa"
+          
+          # Đóng gói Payload chứa Runner.app thành file IPA chuẩn cho Sideloading
+          mkdir -p Payload
+          cp -r app/build/ios/iphoneos/Runner.app Payload/
+          zip -r -q "$TARGET_IPA" Payload
+          rm -rf Payload
+          
+          echo "Created named IPA: $TARGET_IPA"
+          echo "ipa_path=${TARGET_IPA}" >> $GITHUB_OUTPUT
+
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: ${{ steps.prepare_ipa.outputs.ipa_path }}
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Determine Version & Tag
+        id: version_info
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_NAME="${{ github.ref_name }}"
@@ -88,46 +166,36 @@ jobs:
             RAW_VER=$(grep '^version: ' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
             TAG_NAME="v${RAW_VER}"
           fi
-          
-          ORIGINAL_APK=$(find . -type f -name "*release*.apk" | head -n 1)
-          if [ -z "$ORIGINAL_APK" ]; then
-            echo "Error: Release APK not found!"
-            find . -name "*.apk" || true
-            exit 1
-          fi
-          
-          TARGET_APK="Movix-${RAW_VER}.apk"
-          cp "$ORIGINAL_APK" "$TARGET_APK"
-          echo "Created named APK: $TARGET_APK from $ORIGINAL_APK"
-          
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "apk_path=${TARGET_APK}" >> $GITHUB_OUTPUT
           echo "raw_version=${RAW_VER}" >> $GITHUB_OUTPUT
+          echo "Assets to publish:"
+          ls -lh release-assets/
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: ${{ steps.prepare_apk.outputs.apk_path }}
-          tag_name: ${{ steps.prepare_apk.outputs.tag_name }}
-          name: Movix Release ${{ steps.prepare_apk.outputs.tag_name }}
+          files: release-assets/*
+          tag_name: ${{ steps.version_info.outputs.tag_name }}
+          name: Movix Release ${{ steps.version_info.outputs.tag_name }}
           make_latest: true
           body: |
             ## Movix - Ứng dụng xem phim trực tuyến hiện đại (Flutter)
             
             ### 📦 Tải file cài đặt:
-            - **Android APK**: Tải file `Movix-${{ steps.prepare_apk.outputs.raw_version }}.apk` bên dưới để cài đặt trực tiếp trên điện thoại/TV Android.
+            - **Android (APK)**: Tải file `Movix-${{ steps.version_info.outputs.raw_version }}.apk` để cài đặt trực tiếp trên điện thoại hoặc Android TV.
+            - **iOS (IPA)**: Tải file `Movix-${{ steps.version_info.outputs.raw_version }}.ipa` để cài đặt trên iPhone / iPad thông qua AltStore, Sideloadly, TrollStore, Scarlet, Esign hoặc Xcode.
             
-            ### ✨ Tính năng & Cải tiến mới trong v1.1.1:
-            - **Tích hợp kho phim đa nguồn KKPhim & VSMov (hơn 50,000+ phim)**: Tự động tổng hợp và cập nhật liên tục các tựa phim mới nhất từ cả hai nền tảng.
-            - **Tìm kiếm song song đa nguồn (Parallel Search)**: Gửi truy vấn đồng thời tới KKPhim và VSMov, tự động gộp và khử trùng lặp theo tên và slug với cơ chế fallback NguonC.
-            - **Trình phát đa máy chủ & Trích xuất HLS VSMov trực tiếp**: Tự động giải mã stream HLS `.m3u8` trực tiếp từ CDN VSMov, mang lại trải nghiệm xem không gián đoạn, không quảng cáo.
-            - **Đo độ trễ thực tế (Ping ms) theo thời gian thực**: Trình phát chủ động đo tốc độ phản hồi tới từng máy chủ CDN (🟢 Rất nhanh < 120ms, 🟡 Ổn định < 300ms, 🔴 Chậm > 300ms) kèm nút đo lại ping tức thì.
-            - **Bộ chọn nguồn & Cài đặt phát dạng Popover Dropdown nổi mini**: Thiết kế lại toàn bộ giao diện chọn máy chủ và cài đặt phát theo phong cách YouTube / Netflix nhỏ gọn, không che video, không làm mờ màn hình.
-            - **Chuyển máy chủ phát mượt mà (Seamless Resume)**: Khi đổi máy chủ phát, video tiếp tục phát chính xác tại giây hiện tại mà không bị khởi động lại từ đầu.
-            - **Nâng cấp bộ lọc danh mục toàn diện**: Hỗ trợ đầy đủ 26 thể loại, 36 quốc gia, các năm 1970–2026 và sắp xếp Phổ biến nhất / Đánh giá cao.
-            - **Chuẩn hóa giao diện cá nhân**: Loại bỏ hoàn toàn các huy hiệu VIP trọn đời.
+            ---
+            
+            ### ✨ Những điểm mới & Cải tiến trong bản ${{ steps.version_info.outputs.tag_name }}:
+            - **Bổ sung bộ cài đặt iOS (.ipa)**: Hỗ trợ người dùng thiết bị Apple (iPhone / iPad) cài đặt và trải nghiệm Movix dễ dàng.
+            - **Khắc phục lỗi bắt nhầm phim & diễn viên TMDB**: Bổ sung bộ lọc đối chiếu chéo (Cross-Validation) giữa diễn viên gốc và diễn viên TMDB; loại bỏ tình trạng phim truyền hình Việt Nam bị gán nhầm sang phim ngoại quốc.
+            - **Giao diện Diễn viên & Vai diễn thiết kế mới**: Hiển thị dàn diễn viên Việt Nam sang trọng dưới dạng thẻ điện ảnh kèm biểu trưng Avatar chữ lồng (Monogram).
+            - **Chuẩn hóa tỷ lệ khung hình & Bố cục ảnh nền**: Khắc phục hiện tượng ảnh bị méo/co trên một số thiết bị; loại bỏ độ mờ nhân tạo, tối ưu khoảng trống (negative space) và phủ gradient tương phản cao giúp tiêu đề luôn rõ nét.
+            - **Cuộn mượt lên đầu trang (Tap Active Tab to Scroll to Top)**: Bấm vào mục đang xem trên thanh điều hướng dưới cùng để tự động cuộn lên vị trí đầu trang (tương tự trải nghiệm trên YouTube / Facebook).
+            - **Tối ưu kết nối mạng**: Máy chủ nội bộ hỗ trợ lắng nghe trên `0.0.0.0` tương thích hoàn toàn với cả IPv4 và IPv6 (localhost).
           draft: false
           prerelease: false
           generate_release_notes: false

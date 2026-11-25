@@ -6,6 +6,11 @@ on:
       - 'v*'
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:

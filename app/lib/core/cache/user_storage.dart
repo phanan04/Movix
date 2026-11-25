@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/movie_model.dart';
@@ -171,6 +172,7 @@ class UserStorage {
   final ValueNotifier<List<UserCommentItem>> commentsNotifier = ValueNotifier([]);
 
   StreamSubscription<DocumentSnapshot>? _cloudSyncSub;
+  bool _hasCompletedInitialSync = false;
 
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -216,11 +218,13 @@ class UserStorage {
   // --- CLOUD FIRESTORE SYNCHRONIZATION (Cross-Device Real-Time Sync) ---
   Future<void> _startCloudSync(String userId) async {
     _cloudSyncSub?.cancel();
+    _hasCompletedInitialSync = false;
     if (userId.isEmpty) return;
 
     try {
       // 1. Initial Pull & Merge from Cloud
       await _pullFromCloud(userId);
+      _hasCompletedInitialSync = true;
 
       // 2. Real-time sync listener across devices
       _cloudSyncSub = FirebaseFirestore.instance
@@ -229,8 +233,9 @@ class UserStorage {
           .snapshots()
           .listen((snapshot) {
         if (!snapshot.exists || snapshot.data() == null) return;
+        if (snapshot.metadata.hasPendingWrites) return;
         final data = snapshot.data() as Map<String, dynamic>;
-        _applyCloudData(data);
+        _applyCloudData(data, isInitialPull: !_hasCompletedInitialSync);
       }, onError: (e) {
         debugPrint('Firestore real-time sync note: $e');
       });
@@ -242,13 +247,22 @@ class UserStorage {
   void _stopCloudSync() {
     _cloudSyncSub?.cancel();
     _cloudSyncSub = null;
+    _hasCompletedInitialSync = false;
+  }
+
+  Future<void> refreshFromCloud() async {
+    await init();
+    final user = currentUserNotifier.value;
+    if (user != null && user.id.isNotEmpty) {
+      await _pullFromCloud(user.id);
+    }
   }
 
   Future<void> _pullFromCloud(String userId) async {
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
       if (doc.exists && doc.data() != null) {
-        _applyCloudData(doc.data()!);
+        _applyCloudData(doc.data()!, isInitialPull: !_hasCompletedInitialSync);
       } else {
         // First time on cloud: Push current local data up
         await _pushAllToCloud(userId);
@@ -258,50 +272,59 @@ class UserStorage {
     }
   }
 
-  void _applyCloudData(Map<String, dynamic> data) {
+  void _applyCloudData(Map<String, dynamic> data, {bool isInitialPull = false}) {
     try {
-      // 1. Merge My List
+      // 1. Sync My List (chỉ gộp offline lúc mới mở app; các cập nhật real-time sau đó lấy theo Cloud để không hồi sinh phim đã xóa)
       if (data.containsKey('myList') && data['myList'] is List) {
         final cloudList = (data['myList'] as List)
             .map((e) => MovieItem.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
 
-        final merged = <MovieItem>[...cloudList];
-        final seen = merged.map((m) => m.slug).toSet();
-        for (final m in myListNotifier.value) {
-          if (seen.add(m.slug)) {
-            merged.add(m);
+        final resultList = <MovieItem>[...cloudList];
+        if (isInitialPull) {
+          final seen = resultList.map((m) => m.slug).toSet();
+          for (final m in myListNotifier.value) {
+            if (seen.add(m.slug)) {
+              resultList.add(m);
+            }
           }
         }
-        myListNotifier.value = merged;
+        myListNotifier.value = resultList;
         final key = _getMyListKey();
-        _prefs?.setString(key, jsonEncode(merged.map((e) => e.toJson()).toList()));
+        _prefs?.setString(key, jsonEncode(resultList.map((e) => e.toJson()).toList()));
       }
 
-      // 2. Merge Watch History
+      // 2. Sync Watch History
       if (data.containsKey('history') && data['history'] is List) {
         final cloudHistory = (data['history'] as List)
             .map((e) => WatchProgress.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
 
-        final map = <String, WatchProgress>{};
-        for (final h in historyNotifier.value) {
-          map[h.movieSlug] = h;
-        }
-        for (final h in cloudHistory) {
-          if (!map.containsKey(h.movieSlug) || h.updatedAt.isAfter(map[h.movieSlug]!.updatedAt)) {
+        List<WatchProgress> resultHistory;
+        if (isInitialPull) {
+          final map = <String, WatchProgress>{};
+          for (final h in historyNotifier.value) {
             map[h.movieSlug] = h;
           }
-        }
-        final mergedHistory = map.values.toList()
-          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        if (mergedHistory.length > 50) {
-          mergedHistory.removeRange(50, mergedHistory.length);
+          for (final h in cloudHistory) {
+            if (!map.containsKey(h.movieSlug) || h.updatedAt.isAfter(map[h.movieSlug]!.updatedAt)) {
+              map[h.movieSlug] = h;
+            }
+          }
+          resultHistory = map.values.toList()
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        } else {
+          resultHistory = cloudHistory
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         }
 
-        historyNotifier.value = mergedHistory;
+        if (resultHistory.length > 50) {
+          resultHistory.removeRange(50, resultHistory.length);
+        }
+
+        historyNotifier.value = resultHistory;
         final key = _getHistoryKey();
-        _prefs?.setString(key, jsonEncode(mergedHistory.map((e) => e.toJson()).toList()));
+        _prefs?.setString(key, jsonEncode(resultHistory.map((e) => e.toJson()).toList()));
       }
     } catch (e) {
       debugPrint('Error applying cloud data: $e');
@@ -727,18 +750,40 @@ class UserStorage {
     myListNotifier.value = [];
   }
 
-  bool isInMyList(String slug) {
-    return myListNotifier.value.any((m) => m.slug == slug);
+  bool _isSameMovie(MovieItem a, String slug, int? tmdbId) {
+    if (tmdbId != null && a.tmdbId != null) {
+      return a.tmdbId == tmdbId;
+    }
+    return a.slug == slug;
+  }
+
+  bool isInMyList(String slug, {int? tmdbId}) {
+    return myListNotifier.value.any((m) => _isSameMovie(m, slug, tmdbId));
   }
 
   Future<void> toggleMyList(MovieItem movie) async {
+    HapticFeedback.selectionClick();
     final current = List<MovieItem>.from(myListNotifier.value);
-    final idx = current.indexWhere((m) => m.slug == movie.slug);
+    final idx = current.indexWhere((m) => _isSameMovie(m, movie.slug, movie.tmdbId));
     if (idx >= 0) {
       current.removeAt(idx);
     } else {
       current.insert(0, movie);
     }
+    myListNotifier.value = current;
+    final key = _getMyListKey();
+    await _prefs?.setString(key, jsonEncode(current.map((e) => e.toJson()).toList()));
+    _pushMyListToCloud();
+  }
+
+  Future<void> removeMyListItem(MovieItem movie) async {
+    await removeMyListItems([movie]);
+  }
+
+  Future<void> removeMyListItems(List<MovieItem> movies) async {
+    if (movies.isEmpty) return;
+    final current = List<MovieItem>.from(myListNotifier.value);
+    current.removeWhere((item) => movies.any((m) => _isSameMovie(item, m.slug, m.tmdbId)));
     myListNotifier.value = current;
     final key = _getMyListKey();
     await _prefs?.setString(key, jsonEncode(current.map((e) => e.toJson()).toList()));
@@ -783,6 +828,22 @@ class UserStorage {
     current.removeWhere((h) => h.movieSlug == progress.movieSlug);
     current.insert(0, progress);
     if (current.length > 50) current.removeLast();
+
+    historyNotifier.value = current;
+    final key = _getHistoryKey();
+    await _prefs?.setString(key, jsonEncode(current.map((e) => e.toJson()).toList()));
+    _pushHistoryToCloud();
+  }
+
+  Future<void> removeHistoryItem(String movieSlug) async {
+    await removeHistoryItems([movieSlug]);
+  }
+
+  Future<void> removeHistoryItems(List<String> movieSlugs) async {
+    if (movieSlugs.isEmpty) return;
+    final slugSet = movieSlugs.toSet();
+    final current = List<WatchProgress>.from(historyNotifier.value);
+    current.removeWhere((h) => slugSet.contains(h.movieSlug));
 
     historyNotifier.value = current;
     final key = _getHistoryKey();

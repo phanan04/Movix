@@ -28,7 +28,6 @@ class AppColors {
   // Accent & Status
   static const Color star = Color(0xFFFFB800);
   static const Color success = Color(0xFF12D18E);
-  static const Color info = Color(0xFF246BFD);
   static const Color warning = Color(0xFFFACC15);
 
   // Overlay gradients (Smooth fade to #0F1014)

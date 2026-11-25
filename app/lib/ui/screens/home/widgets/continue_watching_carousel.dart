@@ -89,6 +89,8 @@ class ContinueWatchingCarousel extends StatelessWidget {
                                   width: 210,
                                   height: 118,
                                   fit: BoxFit.cover,
+                                  memCacheWidth: 420,
+                                  memCacheHeight: 236,
                                 ),
                                 // Gradient Overlay for contrast
                                 Container(
@@ -132,11 +134,18 @@ class ContinueWatchingCarousel extends StatelessWidget {
                                     height: 3.5,
                                     color: Colors.white24,
                                     alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: progress,
-                                      child: Container(
-                                        color: AppColors.primary,
-                                      ),
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween<double>(begin: 0.0, end: progress),
+                                      duration: const Duration(milliseconds: 380),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (_, val, __) {
+                                        return FractionallySizedBox(
+                                          widthFactor: val,
+                                          child: Container(
+                                            color: AppColors.primary,
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
                                 ),

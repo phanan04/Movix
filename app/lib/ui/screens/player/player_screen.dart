@@ -149,8 +149,8 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
       _drawerChunkIndex = curIdx ~/ chunkSize;
     }
 
-    // Sync position every 300ms
-    _tickerTimer = Timer.periodic(const Duration(milliseconds: 300), (_) => _syncPlaybackState());
+    // Sync position every 500ms (chỉ rebuild UI khi controls đang hiện và giá trị đổi)
+    _tickerTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _syncPlaybackState());
 
     // Auto save progress every 5 seconds
     _progressSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
@@ -230,21 +230,33 @@ class _PlayerScreenState extends State<PlayerScreen> with TickerProviderStateMix
   void _syncPlaybackState() {
     if (!mounted || _isDraggingSlider) return;
 
+    double pos = _currentPosition;
+    double dur = _totalDuration;
+    bool playing = _isPlaying;
+
     if (_isWebMode) {
-      final pos = webGetCurrentTime(_webPlayerId);
-      final dur = webGetDuration(_webPlayerId);
-      final playing = webIsPlaying(_webPlayerId);
-      setState(() {
-        _currentPosition = pos;
-        if (dur > 0) _totalDuration = dur;
-        _isPlaying = playing;
-      });
+      pos = webGetCurrentTime(_webPlayerId);
+      final webDur = webGetDuration(_webPlayerId);
+      if (webDur > 0) dur = webDur;
+      playing = webIsPlaying(_webPlayerId);
     } else if (_nativeController != null && _nativeController!.value.isInitialized) {
-      setState(() {
-        _currentPosition = _nativeController!.value.position.inSeconds.toDouble();
-        _totalDuration = _nativeController!.value.duration.inSeconds.toDouble();
-        _isPlaying = _nativeController!.value.isPlaying;
-      });
+      pos = _nativeController!.value.position.inSeconds.toDouble();
+      dur = _nativeController!.value.duration.inSeconds.toDouble();
+      playing = _nativeController!.value.isPlaying;
+    } else {
+      return;
+    }
+
+    final changed = pos.round() != _currentPosition.round() ||
+        dur.round() != _totalDuration.round() ||
+        playing != _isPlaying;
+
+    _currentPosition = pos;
+    _totalDuration = dur;
+    _isPlaying = playing;
+
+    if (_showControls && changed) {
+      setState(() {});
     }
   }
 

@@ -242,10 +242,15 @@ final exploreMoviesProvider = FutureProvider<List<MovieItem>>((ref) async {
   return movies;
 });
 
-// Chi tiết phim (theo slug)
-final movieDetailProvider = FutureProvider.family<MovieDetail, String>((ref, slug) async {
+// Chi tiết phim (theo slug + optional tmdbId chuẩn xác, tự giải phóng RAM khi rời trang)
+final movieDetailProvider = FutureProvider.autoDispose.family<MovieDetail, MovieDetailRequest>((ref, req) async {
   final api = ref.watch(apiServiceProvider);
-  return api.getMovieDetail(slug);
+  return api.getMovieDetail(
+    req.slug,
+    tmdbId: req.tmdbId,
+    tmdbMediaType: req.tmdbMediaType,
+    previewMovie: req.previewMovie,
+  );
 });
 
 // Search Query Notifier
@@ -277,28 +282,28 @@ final searchResultsProvider = FutureProvider<List<MovieItem>>((ref) async {
 });
 
 // Phim tương tự (TMDb AI Recommendations + Fallback)
-final similarMoviesProvider = FutureProvider.family<List<MovieItem>, MovieDetail>((ref, movie) async {
+final similarMoviesProvider = FutureProvider.autoDispose.family<List<MovieItem>, MovieDetail>((ref, movie) async {
   final api = ref.watch(apiServiceProvider);
   return api.getSimilarMovies(movie);
 });
 
 // Hồ sơ diễn viên & phim đã đóng (TMDb Filmography)
-final personDetailsProvider = FutureProvider.family<TmdbPersonDetails?, int>((ref, personId) async {
+final personDetailsProvider = FutureProvider.autoDispose.family<TmdbPersonDetails?, int>((ref, personId) async {
   return TmdbService().getPersonDetails(personId);
 });
 
 // Tìm kiếm hồ sơ diễn viên theo tên
-final personDetailsByNameProvider = FutureProvider.family<TmdbPersonDetails?, String>((ref, name) async {
+final personDetailsByNameProvider = FutureProvider.autoDispose.family<TmdbPersonDetails?, String>((ref, name) async {
   return TmdbService().searchPerson(name);
 });
 
 // Trọn bộ sưu tập / Franchise
-final movieCollectionProvider = FutureProvider.family<TmdbCollection?, int>((ref, collectionId) async {
+final movieCollectionProvider = FutureProvider.autoDispose.family<TmdbCollection?, int>((ref, collectionId) async {
   return TmdbService().getCollection(collectionId);
 });
 
 // Đánh giá từ cộng đồng quốc tế (Reviews)
-final movieReviewsProvider = FutureProvider.family<List<TmdbReview>, MovieDetail>((ref, movie) async {
+final movieReviewsProvider = FutureProvider.autoDispose.family<List<TmdbReview>, MovieDetail>((ref, movie) async {
   if (movie.tmdbId == null || movie.tmdbMediaType == null) return [];
   return TmdbService().getMovieReviews(movie.tmdbId!, movie.tmdbMediaType!);
 });
@@ -343,9 +348,8 @@ enum TrendingHubCategory {
   people,  // 🎭 Nghệ sĩ Hot
 }
 
-// Provider lấy phim theo danh mục Trending
+// Provider lấy phim theo danh mục Trending trực tiếp từ TMDb (chính xác & tức thì, không spam tìm kiếm)
 final trendingCategoryMoviesProvider = FutureProvider.family<List<MovieItem>, TrendingHubCategory>((ref, category) async {
-  final api = ref.watch(apiServiceProvider);
   String mediaType = 'all';
   String timeWindow = 'week';
 
@@ -370,28 +374,7 @@ final trendingCategoryMoviesProvider = FutureProvider.family<List<MovieItem>, Tr
       return [];
   }
 
-  final titles = await TmdbService().getTrending(mediaType: mediaType, timeWindow: timeWindow);
-  if (titles.isEmpty) return [];
-
-  final futures = titles.take(15).map((t) async {
-    try {
-      final res = await api.searchMovies(t, limit: 1);
-      return res.isNotEmpty ? res.first : null;
-    } catch (_) {
-      return null;
-    }
-  });
-
-  final list = await Future.wait(futures);
-  final seen = <String>{};
-  final results = <MovieItem>[];
-  for (final m in list) {
-    if (m != null && !seen.contains(m.slug)) {
-      seen.add(m.slug);
-      results.add(m);
-    }
-  }
-  return results;
+  return TmdbService().getTrendingItems(mediaType: mediaType, timeWindow: timeWindow);
 });
 
 // Provider lấy nghệ sĩ thịnh hành (Trending Persons)

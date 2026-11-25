@@ -122,6 +122,8 @@ class MovieItem {
   final String time;
   final List<String> categoryNames;
   final double voteAverage;
+  final int? tmdbId;
+  final String? tmdbMediaType;
 
   const MovieItem({
     required this.id,
@@ -137,6 +139,8 @@ class MovieItem {
     this.time = '',
     this.categoryNames = const [],
     this.voteAverage = 0.0,
+    this.tmdbId,
+    this.tmdbMediaType,
   });
 
   String get ratingDisplay {
@@ -189,9 +193,20 @@ class MovieItem {
     final rawTmdb = json['tmdb'];
     final rawImdb = json['imdb'];
     double parsedVote = 0.0;
-    if (rawTmdb is Map && rawTmdb['vote_average'] != null) {
-      parsedVote = double.tryParse(rawTmdb['vote_average'].toString()) ?? 0.0;
-    } else if (rawImdb is Map && rawImdb['vote_average'] != null) {
+    int? parsedTmdbId;
+    String? parsedTmdbType;
+    if (rawTmdb is Map) {
+      if (rawTmdb['vote_average'] != null) {
+        parsedVote = double.tryParse(rawTmdb['vote_average'].toString()) ?? 0.0;
+      }
+      if (rawTmdb['id'] != null) {
+        parsedTmdbId = int.tryParse(rawTmdb['id'].toString());
+      }
+      if (rawTmdb['type'] != null) {
+        parsedTmdbType = rawTmdb['type'].toString();
+      }
+    }
+    if (parsedVote <= 0 && rawImdb is Map && rawImdb['vote_average'] != null) {
       parsedVote = double.tryParse(rawImdb['vote_average'].toString()) ?? 0.0;
     }
 
@@ -202,13 +217,15 @@ class MovieItem {
       slug: json['slug']?.toString() ?? '',
       thumbUrl: json['thumb_url']?.toString() ?? json['poster_url']?.toString() ?? '',
       posterUrl: json['poster_url']?.toString() ?? json['thumb_url']?.toString() ?? '',
-      year: int.tryParse(json['year']?.toString() ?? '') ?? 2024,
+      year: int.tryParse(json['year']?.toString() ?? '') ?? 0,
       episodeCurrent: json['episode_current']?.toString() ?? json['current_episode']?.toString() ?? '',
       quality: json['quality']?.toString() ?? 'FHD',
       lang: json['lang']?.toString() ?? json['language']?.toString() ?? 'Vietsub',
       time: json['time']?.toString() ?? '',
       categoryNames: categories,
       voteAverage: parsedVote,
+      tmdbId: parsedTmdbId,
+      tmdbMediaType: parsedTmdbType,
     );
   }
 
@@ -218,7 +235,7 @@ class MovieItem {
     final posterPath = json['poster_path']?.toString();
     final backdropPath = json['backdrop_path']?.toString();
     final releaseDate = json['release_date']?.toString() ?? json['first_air_date']?.toString() ?? '';
-    final year = int.tryParse(releaseDate.split('-').first) ?? 2024;
+    final year = int.tryParse(releaseDate.split('-').first) ?? 0;
     final vote = (json['vote_average'] is num) ? (json['vote_average'] as num).toDouble() : 0.0;
     final id = json['id']?.toString() ?? '';
 
@@ -262,6 +279,8 @@ class MovieItem {
       time: releaseDate,
       categoryNames: const [],
       voteAverage: vote,
+      tmdbId: int.tryParse(id),
+      tmdbMediaType: determinedMediaType,
     );
   }
 
@@ -278,6 +297,12 @@ class MovieItem {
     'lang': lang,
     'time': time,
     'category': categoryNames,
+    if (tmdbId != null)
+      'tmdb': {
+        'id': tmdbId,
+        'type': tmdbMediaType ?? 'movie',
+        'vote_average': voteAverage,
+      },
   };
 }
 
@@ -313,6 +338,7 @@ class MovieDetail {
   final String? collectionBackdrop;
   final List<TmdbCompany> networks;
   final List<TmdbCompany> productionCompanies;
+  final String? trailerYoutubeKey;
 
   const MovieDetail({
     required this.id,
@@ -346,9 +372,16 @@ class MovieDetail {
     this.collectionBackdrop,
     this.networks = const [],
     this.productionCompanies = const [],
+    this.trailerYoutubeKey,
   });
 
   MovieDetail copyWithTmdb(TmdbMovieData tmdb) {
+    final mergedContent = content.trim().isNotEmpty
+        ? content
+        : (tmdb.overviewVi?.trim() ?? '');
+    final mergedDirectors = directors.isNotEmpty
+        ? directors
+        : tmdb.directors;
     return MovieDetail(
       id: id,
       name: name,
@@ -363,15 +396,15 @@ class MovieDetail {
       quality: quality,
       lang: lang,
       year: year,
-      content: content,
+      content: mergedContent,
       actors: actors,
-      directors: directors,
+      directors: mergedDirectors,
       categories: categories,
       episodes: episodes,
       tmdbBackdropUrl: tmdb.backdropUrl,
       tmdbPosterUrl: tmdb.posterUrl,
-      tmdbVoteAverage: tmdb.voteAverage,
-      tmdbVoteCount: tmdb.voteCount,
+      tmdbVoteAverage: tmdb.voteAverage > 0 ? tmdb.voteAverage : tmdbVoteAverage,
+      tmdbVoteCount: tmdb.voteCount > 0 ? tmdb.voteCount : tmdbVoteCount,
       tmdbCast: tmdb.cast,
       tmdbId: tmdb.id,
       tmdbMediaType: tmdb.mediaType,
@@ -381,6 +414,7 @@ class MovieDetail {
       collectionBackdrop: tmdb.collectionBackdrop,
       networks: tmdb.networks,
       productionCompanies: tmdb.productionCompanies,
+      trailerYoutubeKey: tmdb.trailerYoutubeKey ?? trailerYoutubeKey,
     );
   }
 
@@ -417,16 +451,20 @@ class MovieDetail {
       collectionBackdrop: collectionBackdrop,
       networks: networks,
       productionCompanies: productionCompanies,
+      trailerYoutubeKey: trailerYoutubeKey,
     );
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is MovieDetail && runtimeType == other.runtimeType && slug == other.slug;
+      other is MovieDetail &&
+          runtimeType == other.runtimeType &&
+          slug == other.slug &&
+          tmdbId == other.tmdbId;
 
   @override
-  int get hashCode => slug.hashCode;
+  int get hashCode => Object.hash(slug, tmdbId);
 
   String get fullThumbUrl {
     if (thumbUrl.isEmpty) return '';
@@ -506,6 +544,23 @@ class MovieDetail {
     final rawContent = movie['content']?.toString() ?? movie['description']?.toString() ?? '';
     final cleanContent = rawContent.replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ' ').trim();
 
+    // Parse embedded TMDb metadata from KKPhim / VSMov
+    final rawTmdb = movie['tmdb'];
+    int? parsedTmdbId;
+    String? parsedTmdbType;
+    double parsedTmdbVote = 0.0;
+    int parsedTmdbVoteCount = 0;
+    if (rawTmdb is Map) {
+      parsedTmdbId = int.tryParse(rawTmdb['id']?.toString() ?? '');
+      parsedTmdbType = rawTmdb['type']?.toString();
+      if (rawTmdb['vote_average'] != null) {
+        parsedTmdbVote = double.tryParse(rawTmdb['vote_average'].toString()) ?? 0.0;
+      }
+      if (rawTmdb['vote_count'] != null) {
+        parsedTmdbVoteCount = int.tryParse(rawTmdb['vote_count'].toString()) ?? 0;
+      }
+    }
+
     return MovieDetail(
       id: movie['_id']?.toString() ?? movie['id']?.toString() ?? movie['slug']?.toString() ?? '',
       name: movie['name']?.toString() ?? '',
@@ -519,12 +574,76 @@ class MovieDetail {
       episodeTotal: movie['episode_total']?.toString() ?? '',
       quality: movie['quality']?.toString() ?? 'FHD',
       lang: movie['lang']?.toString() ?? 'Vietsub',
-      year: int.tryParse(movie['year']?.toString() ?? '') ?? 2024,
+      year: int.tryParse(movie['year']?.toString() ?? '') ?? 0,
       content: cleanContent,
       actors: actorList,
       directors: dirList,
       categories: cats,
       episodes: epServers,
+      tmdbId: parsedTmdbId,
+      tmdbMediaType: parsedTmdbType,
+      tmdbVoteAverage: parsedTmdbVote,
+      tmdbVoteCount: parsedTmdbVoteCount,
+    );
+  }
+
+  factory MovieDetail.fromTmdb(TmdbMovieData tmdb, {MovieItem? preview, String? fallbackSlug}) {
+    final title = (tmdb.title != null && tmdb.title!.isNotEmpty)
+        ? tmdb.title!
+        : (preview?.name ?? '');
+    final origTitle = (tmdb.originalTitle != null && tmdb.originalTitle!.isNotEmpty)
+        ? tmdb.originalTitle!
+        : (preview?.originName ?? title);
+    final slug = preview?.slug ?? fallbackSlug ?? 'tmdb-${tmdb.id}';
+    final year = tmdb.year ?? preview?.year ?? 0;
+    final isSeries = tmdb.mediaType == 'tv';
+    final runtimeText = tmdb.runtimeMinutes != null && tmdb.runtimeMinutes! > 0
+        ? '${tmdb.runtimeMinutes} phút'
+        : (preview?.time ?? '');
+
+    final cats = tmdb.genres
+        .map((g) => MovieCategoryItem(id: g, name: g, slug: g.toLowerCase()))
+        .toList();
+
+    return MovieDetail(
+      id: tmdb.id.toString(),
+      name: title,
+      originName: origTitle,
+      slug: slug,
+      type: isSeries ? 'series' : 'single',
+      thumbUrl: tmdb.backdropUrl ?? preview?.thumbUrl ?? '',
+      posterUrl: tmdb.posterUrl ?? preview?.posterUrl ?? '',
+      time: runtimeText,
+      episodeCurrent: isSeries
+          ? (tmdb.numberOfEpisodes != null && tmdb.numberOfEpisodes! > 0
+              ? '${tmdb.numberOfEpisodes} tập'
+              : 'Series')
+          : 'Sắp chiếu / Chưa có nguồn',
+      episodeTotal: tmdb.numberOfEpisodes?.toString() ?? '',
+      quality: 'FHD',
+      lang: 'Quốc Tế',
+      year: year,
+      content: (tmdb.overviewVi != null && tmdb.overviewVi!.trim().isNotEmpty)
+          ? tmdb.overviewVi!.trim()
+          : 'Thông tin chính thức từ TMDb. Hiện chưa có nguồn phát trực tuyến trên hệ thống.',
+      actors: tmdb.cast.map((c) => c.name).toList(),
+      directors: tmdb.directors,
+      categories: cats,
+      episodes: const [],
+      tmdbBackdropUrl: tmdb.backdropUrl,
+      tmdbPosterUrl: tmdb.posterUrl,
+      tmdbVoteAverage: tmdb.voteAverage,
+      tmdbVoteCount: tmdb.voteCount,
+      tmdbCast: tmdb.cast,
+      tmdbId: tmdb.id,
+      tmdbMediaType: tmdb.mediaType,
+      clearLogoUrl: tmdb.clearLogoUrl,
+      collectionId: tmdb.collectionId,
+      collectionName: tmdb.collectionName,
+      collectionBackdrop: tmdb.collectionBackdrop,
+      networks: tmdb.networks,
+      productionCompanies: tmdb.productionCompanies,
+      trailerYoutubeKey: tmdb.trailerYoutubeKey,
     );
   }
 }

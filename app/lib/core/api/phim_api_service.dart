@@ -4,6 +4,32 @@ import '../cache/cache_manager.dart';
 import '../models/movie_model.dart';
 import '../services/tmdb_service.dart';
 
+class MovieDetailRequest {
+  final String slug;
+  final int? tmdbId;
+  final String? tmdbMediaType;
+  final MovieItem? previewMovie;
+
+  const MovieDetailRequest({
+    required this.slug,
+    this.tmdbId,
+    this.tmdbMediaType,
+    this.previewMovie,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MovieDetailRequest &&
+          runtimeType == other.runtimeType &&
+          slug == other.slug &&
+          tmdbId == other.tmdbId &&
+          tmdbMediaType == other.tmdbMediaType;
+
+  @override
+  int get hashCode => Object.hash(slug, tmdbId, tmdbMediaType);
+}
+
 // Top-level function for background isolate execution via compute()
 List<MovieItem> _parseMovieItemList(List<dynamic> rawItems) {
   return rawItems.map((e) => MovieItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -22,10 +48,10 @@ class PhimApiService {
       BaseOptions(
         connectTimeout: const Duration(seconds: 6),
         receiveTimeout: const Duration(seconds: 8),
-        sendTimeout: const Duration(seconds: 6),
+        sendTimeout: kIsWeb ? null : const Duration(seconds: 6),
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'MovixFlutter/1.0',
+          if (!kIsWeb) 'User-Agent': 'MovixFlutter/1.0',
         },
       ),
     );
@@ -61,10 +87,10 @@ class PhimApiService {
     });
   }
 
-  // Helper to parse movie lists in background isolate via compute() for 60/120fps UI
+  // Helper to parse movie lists cleanly without isolate overhead on Web
   Future<List<MovieItem>> _parseWithIsolate(List<dynamic> rawItems) async {
     if (rawItems.isEmpty) return [];
-    if (rawItems.length <= 6) {
+    if (kIsWeb || rawItems.length <= 12) {
       return _parseMovieItemList(rawItems);
     }
     return compute(_parseMovieItemList, rawItems);
@@ -197,17 +223,20 @@ class PhimApiService {
         return <MovieItem>[];
       }),
 
-      // Nguồn 2: VSMov (Xử lý đa luồng qua Isolate)
-      _dio.get(vsMovUrl).then<List<MovieItem>>((res) {
-        if (res.statusCode == 200 && res.data != null) {
-          final items = res.data['items'] as List? ?? [];
-          return _parseWithIsolate(items);
-        }
-        return <MovieItem>[];
-      }).catchError((e) {
-        debugPrint('VSMov search error: $e');
-        return <MovieItem>[];
-      }),
+      // Nguồn 2: VSMov (bỏ qua trên Web vì VSMov không hỗ trợ CORS trình duyệt)
+      if (kIsWeb)
+        Future.value(<MovieItem>[])
+      else
+        _dio.get(vsMovUrl).then<List<MovieItem>>((res) {
+          if (res.statusCode == 200 && res.data != null) {
+            final items = res.data['items'] as List? ?? [];
+            return _parseWithIsolate(items);
+          }
+          return <MovieItem>[];
+        }).catchError((e) {
+          debugPrint('VSMov search error: $e');
+          return <MovieItem>[];
+        }),
     ]);
 
     final kkPhimMovies = results[0];
@@ -253,74 +282,135 @@ class PhimApiService {
     return merged;
   }
 
-  // 5. Chi tiết phim đa nguồn (KKPhim chính + NguonC + VSMov) tích hợp TMDB ngay từ đầu
-  Future<MovieDetail> getMovieDetail(String slug) async {
-    final primaryUrl = '$primaryApi/phim/$slug';
-    MovieDetail detail;
+  String _normalizeText(String raw) {
+    var s = raw.toLowerCase().trim();
+    const withDia = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const withoutDia = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+    for (int i = 0; i < withDia.length; i++) {
+      s = s.replaceAll(withDia[i], withoutDia[i]);
+    }
+    s = s.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    return s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
 
+  /// Chọn kết quả khớp chính xác nhất theo tmdbId (ưu tiên tuyệt đối) hoặc tiêu đề + năm
+  MovieItem? _pickBestPlayableMatch(
+    List<MovieItem> candidates, {
+    int? tmdbId,
+    String? tmdbMediaType,
+    String? title,
+    String? originName,
+    int? year,
+  }) {
+    if (candidates.isEmpty) return null;
+
+    if (tmdbId != null && tmdbId > 0) {
+      // 1. Khớp chính xác tmdbId & mediaType
+      for (final c in candidates) {
+        if (c.tmdbId == tmdbId) {
+          if (tmdbMediaType == null || c.tmdbMediaType == null || c.tmdbMediaType == tmdbMediaType) {
+            return c;
+          }
+        }
+      }
+      // 2. Khớp tmdbId (bỏ qua mediaType nếu nguồn không ghi rõ)
+      for (final c in candidates) {
+        if (c.tmdbId == tmdbId) return c;
+      }
+    }
+
+    // 3. Không bao giờ lấy phim có tmdbId KHÁC với tmdbId cần tìm
+    final normTitle = title != null ? _normalizeText(title) : '';
+    final normOrig = originName != null ? _normalizeText(originName) : '';
+
+    for (final c in candidates) {
+      if (tmdbId != null && c.tmdbId != null && c.tmdbId != tmdbId) {
+        continue;
+      }
+      final cName = _normalizeText(c.name);
+      final cOrig = _normalizeText(c.originName);
+      final nameMatches = (normTitle.isNotEmpty && (cName == normTitle || cOrig == normTitle)) ||
+          (normOrig.isNotEmpty && (cOrig == normOrig || cName == normOrig));
+      if (!nameMatches) continue;
+
+      if (year != null && year > 0 && c.year > 0 && (c.year - year).abs() > 1) {
+        continue;
+      }
+      return c;
+    }
+
+    return null;
+  }
+
+  /// Tải trực tiếp chi tiết phim theo slug (KKPhim chính; nếu lỗi thì chạy song song NguonC + VSMov)
+  Future<MovieDetail> _fetchDirectBySlug(String slug) async {
+    final primaryUrl = '$primaryApi/phim/$slug';
     try {
       final data = await _fetchWithCache(primaryUrl, maxAge: const Duration(minutes: 20));
-      detail = MovieDetail.fromJson(data);
+      final detail = MovieDetail.fromJson(data);
+      if (detail.name.isNotEmpty) return detail;
     } catch (e) {
-      debugPrint('Primary API error for detail: $e. Trying NguonC fallback...');
+      debugPrint('Primary API detail miss for "$slug": $e. Trying NguonC & VSMov in parallel...');
+    }
+
+    Future<MovieDetail?> tryNguonC() async {
       try {
-        final nguonCUrl = '$nguonCApi/film/$slug';
-        final res = await _dio.get(nguonCUrl);
+        final res = await _dio.get('$nguonCApi/film/$slug').timeout(const Duration(seconds: 4));
         if (res.statusCode == 200 && res.data != null) {
           final movieData = res.data['movie'];
           if (movieData != null) {
             final servers = <EpisodeServer>[];
             if (movieData['episodes'] is List) {
               for (final s in movieData['episodes']) {
-                servers.add(EpisodeServer.fromJson(s));
-              }
-            }
-            detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
-          } else {
-            throw Exception('Empty movie data on NguonC');
-          }
-        } else {
-          throw Exception('NguonC HTTP ${res.statusCode}');
-        }
-      } catch (nguonCErr) {
-        debugPrint('NguonC fallback error: $nguonCErr. Trying VSMov fallback...');
-        // Fallback 2: VSMov
-        try {
-          final vsMovUrl = '$vsMovApi/phim/$slug';
-          final vsRes = await _dio.get(vsMovUrl);
-          if (vsRes.statusCode == 200 && vsRes.data != null && vsRes.data['movie'] != null) {
-            final movieData = vsRes.data['movie'];
-            final servers = <EpisodeServer>[];
-            if (vsRes.data['episodes'] is List) {
-              for (final s in vsRes.data['episodes']) {
                 if (s is Map<String, dynamic>) {
                   servers.add(EpisodeServer.fromJson(s));
                 }
               }
             }
-            detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
-          } else {
-            throw Exception('Empty movie data on VSMov');
+            final detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
+            if (detail.name.isNotEmpty) return detail;
           }
-        } catch (_) {
-          // Fallback 3: Tìm kiếm phim theo tên nếu slug trực tiếp không khớp
-          try {
-            final queryTitle = slug.replaceAll('tmdb-', '').replaceAll('-', ' ').trim();
-            final searchResults = await searchMovies(queryTitle, limit: 1);
-            if (searchResults.isNotEmpty && searchResults.first.slug != slug) {
-              return await getMovieDetail(searchResults.first.slug);
-            }
-          } catch (_) {}
-          rethrow;
         }
-      }
+      } catch (_) {}
+      return null;
     }
 
-    // Tự động gộp thêm Server phát từ VSMov (Triple-Source Streaming)
+    Future<MovieDetail?> tryVsMov() async {
+      if (kIsWeb) return null;
+      try {
+        final vsRes = await _dio.get('$vsMovApi/phim/$slug').timeout(const Duration(seconds: 4));
+        if (vsRes.statusCode == 200 && vsRes.data != null && vsRes.data['movie'] != null) {
+          final movieData = vsRes.data['movie'];
+          final servers = <EpisodeServer>[];
+          if (vsRes.data['episodes'] is List) {
+            for (final s in vsRes.data['episodes']) {
+              if (s is Map<String, dynamic>) {
+                servers.add(EpisodeServer.fromJson(s));
+              }
+            }
+          }
+          final detail = MovieDetail.fromJson(movieData, explicitEpisodes: servers);
+          if (detail.name.isNotEmpty) return detail;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    final fallbackResults = await Future.wait([tryNguonC(), tryVsMov()]);
+    for (final res in fallbackResults) {
+      if (res != null) return res;
+    }
+
+    throw Exception('Không tìm thấy thông tin phim ($slug)');
+  }
+
+  /// Gộp thêm Server phát từ VSMov (không chặn UI nếu chậm, bỏ qua trên Web vì không có CORS)
+  Future<MovieDetail> _mergeVsMovEpisodes(MovieDetail detail) async {
+    if (kIsWeb || detail.slug.isEmpty) return detail;
     try {
-      final vsMovUrl = '$vsMovApi/phim/$slug';
+      final vsMovUrl = '$vsMovApi/phim/${detail.slug}';
       final vsData = await _fetchWithCache(vsMovUrl, maxAge: const Duration(minutes: 20))
-          .timeout(const Duration(milliseconds: 1500));
+          .timeout(const Duration(milliseconds: 1800));
       if (vsData != null && vsData['episodes'] is List) {
         final vsEpisodes = vsData['episodes'] as List;
         final newServers = List<EpisodeServer>.from(detail.episodes);
@@ -339,43 +429,189 @@ class PhimApiService {
           }
         }
         if (newServers.length > detail.episodes.length) {
-          detail = detail.copyWithEpisodes(newServers);
+          return detail.copyWithEpisodes(newServers);
         }
       }
     } catch (e) {
       debugPrint('VSMov server merge non-blocking: $e');
     }
-
-    // Tích hợp TMDB đồng bộ ngay khi load:
-    // Nếu có dữ liệu TMDB -> áp dụng ngay lập tức không bị delay/nhảy màn hình
-    // Nếu timeout (sau 1.5s) hoặc lỗi mạng -> tự động fallback giữ nguyên dữ liệu gốc
-    try {
-      final tmdb = await TmdbService().enrichMovie(
-        title: detail.name,
-        originName: detail.originName,
-        year: detail.year,
-        knownActors: detail.actors,
-        knownDirectors: detail.directors,
-      ).timeout(const Duration(milliseconds: 1500));
-      if (tmdb != null) {
-        detail = detail.copyWithTmdb(tmdb);
-      }
-    } catch (e) {
-      debugPrint('TMDB enrich timeout or error: $e. Fallback to KKPhim.');
-    }
-
     return detail;
   }
 
-  // 5. Phim tương tự theo TMDb Recommendations kết hợp Fallback
+  // 5. Chi tiết phim đa nguồn tối ưu song song, khớp chính xác tuyệt đối theo tmdbId
+  Future<MovieDetail> getMovieDetail(
+    String slug, {
+    int? tmdbId,
+    String? tmdbMediaType,
+    MovieItem? previewMovie,
+  }) async {
+    // =========================================================================
+    // TRƯỜNG HỢP A: Phim mở từ nguồn TMDb (có sẵn tmdbId chuẩn xác)
+    // =========================================================================
+    if (tmdbId != null && tmdbId > 0) {
+      final tmdbFuture = TmdbService()
+          .getDetailById(tmdbId, tmdbMediaType ?? 'movie')
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+
+      Future<MovieDetail?> resolveStreamForTmdb(TmdbMovieData? tmdbData) async {
+        // 1. Thử lấy trực tiếp theo slug nếu slug có vẻ hợp lệ và khớp tmdbId
+        if (!slug.startsWith('tmdb-')) {
+          try {
+            final direct = await _fetchDirectBySlug(slug).timeout(const Duration(milliseconds: 2500));
+            if (direct.tmdbId == tmdbId) {
+              return direct;
+            }
+            if (direct.tmdbId == null) {
+              final refTitle = tmdbData?.title ?? previewMovie?.name ?? '';
+              final refOrig = tmdbData?.originalTitle ?? previewMovie?.originName ?? '';
+              final refYear = tmdbData?.year ?? previewMovie?.year;
+              final normDName = _normalizeText(direct.name);
+              final normDOrig = _normalizeText(direct.originName);
+              final titleOk = (refTitle.isNotEmpty && (normDName == _normalizeText(refTitle) || normDOrig == _normalizeText(refTitle))) ||
+                  (refOrig.isNotEmpty && (normDOrig == _normalizeText(refOrig) || normDName == _normalizeText(refOrig)));
+              final yearOk = refYear == null || refYear <= 0 || direct.year <= 0 || (direct.year - refYear).abs() <= 1;
+              if (titleOk && yearOk) return direct;
+            }
+            debugPrint('Slug "$slug" on KKPhim is tmdbId=${direct.tmdbId}, expected $tmdbId. Searching exact match...');
+          } catch (_) {}
+        }
+
+        // 2. Tìm kiếm chính xác theo tên gốc / tên tiếng Việt trên KKPhim + VSMov và lọc theo tmdbId
+        final searchQueries = <String>[];
+        final origQ = (tmdbData?.originalTitle ?? previewMovie?.originName ?? '').trim();
+        final viQ = (tmdbData?.title ?? previewMovie?.name ?? '').trim();
+        if (origQ.isNotEmpty) searchQueries.add(origQ);
+        if (viQ.isNotEmpty && viQ.toLowerCase() != origQ.toLowerCase()) searchQueries.add(viQ);
+        if (searchQueries.isEmpty && slug.isNotEmpty) {
+          searchQueries.add(slug.replaceAll('tmdb-', '').replaceAll('-', ' ').trim());
+        }
+
+        for (final q in searchQueries) {
+          try {
+            final candidates = await searchMovies(q, limit: 12).timeout(const Duration(seconds: 3));
+            final matched = _pickBestPlayableMatch(
+              candidates,
+              tmdbId: tmdbId,
+              tmdbMediaType: tmdbMediaType,
+              title: viQ,
+              originName: origQ,
+              year: tmdbData?.year ?? previewMovie?.year,
+            );
+            if (matched != null && matched.slug.isNotEmpty) {
+              return await _fetchDirectBySlug(matched.slug).timeout(const Duration(seconds: 3));
+            }
+          } catch (_) {}
+        }
+        return null;
+      }
+
+      // Chạy song song tra cứu TMDb và tìm nguồn phát
+      final tmdbData = await tmdbFuture;
+      final playable = await resolveStreamForTmdb(tmdbData)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+
+      if (playable != null) {
+        var finalDetail = await _mergeVsMovEpisodes(playable);
+        if (tmdbData != null) {
+          finalDetail = finalDetail.copyWithTmdb(tmdbData);
+        }
+        return finalDetail;
+      }
+
+      // Nếu không có bản chiếu trên KKPhim/VSMov -> vẫn hiển thị đầy đủ & chuẩn xác thông tin TMDb
+      if (tmdbData != null) {
+        return MovieDetail.fromTmdb(tmdbData, preview: previewMovie, fallbackSlug: slug);
+      }
+      if (previewMovie != null) {
+        return MovieDetail(
+          id: previewMovie.id,
+          name: previewMovie.name,
+          originName: previewMovie.originName,
+          slug: previewMovie.slug,
+          type: previewMovie.tmdbMediaType == 'tv' ? 'series' : 'single',
+          thumbUrl: previewMovie.thumbUrl,
+          posterUrl: previewMovie.posterUrl,
+          time: previewMovie.time,
+          episodeCurrent: previewMovie.episodeCurrent,
+          episodeTotal: '',
+          quality: previewMovie.quality,
+          lang: previewMovie.lang,
+          year: previewMovie.year,
+          content: 'Thông tin phim từ TMDb. Hiện chưa có nguồn phát trực tuyến.',
+          actors: const [],
+          directors: const [],
+          categories: const [],
+          episodes: const [],
+          tmdbId: previewMovie.tmdbId,
+          tmdbMediaType: previewMovie.tmdbMediaType,
+          tmdbVoteAverage: previewMovie.voteAverage,
+        );
+      }
+      throw Exception('Không thể tải thông tin phim TMDb #$tmdbId');
+    }
+
+    // =========================================================================
+    // TRƯỜNG HỢP B: Phim mở theo slug KKPhim / Tiếp tục xem / Danh sách lưu
+    // =========================================================================
+    MovieDetail detail;
+    try {
+      detail = await _fetchDirectBySlug(slug);
+    } catch (e) {
+      // Fallback tìm chính xác theo tên từ slug nếu slug cũ bị đổi (không đệ quy vô hạn)
+      final queryTitle = slug.replaceAll('tmdb-', '').replaceAll('-', ' ').trim();
+      final candidates = await searchMovies(queryTitle, limit: 8).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => <MovieItem>[],
+      );
+      final match = _pickBestPlayableMatch(candidates, title: queryTitle);
+      if (match != null && match.slug.isNotEmpty && match.slug != slug) {
+        detail = await _fetchDirectBySlug(match.slug);
+      } else {
+        rethrow;
+      }
+    }
+
+    // Chạy SONG SONG việc gộp server VSMov và làm giàu dữ liệu TMDb (ưu tiên tmdbId của chính KKPhim)
+    final parallelResults = await Future.wait([
+      _mergeVsMovEpisodes(detail),
+      TmdbService()
+          .enrichMovie(
+            title: detail.name,
+            originName: detail.originName,
+            year: detail.year > 0 ? detail.year : null,
+            knownActors: detail.actors,
+            knownDirectors: detail.directors,
+            tmdbId: detail.tmdbId,
+            mediaType: detail.tmdbMediaType,
+            expectedType: detail.type,
+          )
+          .timeout(const Duration(milliseconds: 3500), onTimeout: () => null)
+          .catchError((e) {
+        debugPrint('TMDB enrich non-blocking error: $e');
+        return null;
+      }),
+    ]);
+
+    var enrichedDetail = parallelResults[0] as MovieDetail;
+    final tmdb = parallelResults[1] as TmdbMovieData?;
+    if (tmdb != null) {
+      enrichedDetail = enrichedDetail.copyWithTmdb(tmdb);
+    }
+
+    return enrichedDetail;
+  }
+
+  // 6. Phim tương tự theo TMDb Recommendations (1 request trực tiếp, tốc độ cao & chuẩn xác) + Fallback
   Future<List<MovieItem>> getSimilarMovies(MovieDetail movie) async {
     final results = <MovieItem>[];
-    final seenSlugs = <String>{movie.slug};
+    final seenIds = <String>{movie.slug};
+    if (movie.tmdbId != null) {
+      seenIds.add('tmdb_${movie.tmdbId}');
+    }
 
     int? tmdbId = movie.tmdbId;
     String? mediaType = movie.tmdbMediaType;
 
-    // Nếu movie chưa có tmdbId, tra cứu nhanh qua TmdbService
     if (tmdbId == null || mediaType == null) {
       try {
         final tmdb = await TmdbService().enrichMovie(
@@ -384,7 +620,8 @@ class PhimApiService {
           year: movie.year > 0 ? movie.year : null,
           knownActors: movie.actors,
           knownDirectors: movie.directors,
-        );
+          expectedType: movie.type,
+        ).timeout(const Duration(seconds: 3), onTimeout: () => null);
         if (tmdb != null) {
           tmdbId = tmdb.id;
           mediaType = tmdb.mediaType;
@@ -394,42 +631,30 @@ class PhimApiService {
       }
     }
 
-    // 1. Nếu có TMDb ID, truy vấn TMDb Recommendations
+    // 1. Lấy trực tiếp MovieItem từ TMDb Recommendations (không spam search KKPhim, không khớp nhầm phim)
     if (tmdbId != null && mediaType != null) {
-      final recTitles = await TmdbService().getRecommendedTitles(
+      final recs = await TmdbService().getRecommendations(
         tmdbId: tmdbId,
         mediaType: mediaType,
       );
-
-      if (recTitles.isNotEmpty) {
-        // Tìm kiếm song song trên kho phim Movix (tối đa 12 tựa phim gợi ý từ TMDb)
-        final searchFutures = recTitles.take(12).map((title) async {
-          try {
-            final searchRes = await searchMovies(title, limit: 1);
-            return searchRes.isNotEmpty ? searchRes.first : null;
-          } catch (_) {
-            return null;
-          }
-        });
-
-        final matchedList = await Future.wait(searchFutures);
-        for (final m in matchedList) {
-          if (m != null && !seenSlugs.contains(m.slug)) {
-            seenSlugs.add(m.slug);
-            results.add(m);
-          }
+      for (final m in recs) {
+        final key = m.tmdbId != null ? 'tmdb_${m.tmdbId}' : m.slug;
+        if (seenIds.add(key) && seenIds.add(m.slug)) {
+          results.add(m);
         }
       }
     }
 
-    // 2. Dự phòng thông minh (Fallback) nếu TMDb trả về ít hơn 8 phim
-    if (results.length < 8) {
-      final categorySlug = movie.categories.isNotEmpty ? movie.categories.first.slug : 'hanh-dong';
+    // 2. Dự phòng thông minh nếu không có TMDb hoặc danh sách ít hơn 6 phim
+    if (results.length < 6) {
+      final categorySlug = (movie.categories.isNotEmpty && movie.categories.first.slug.contains('-'))
+          ? movie.categories.first.slug
+          : 'hanh-dong';
       try {
         final fallbackMovies = await getMoviesByCategory(categorySlug, page: 1, limit: 16);
         for (final fb in fallbackMovies) {
-          if (!seenSlugs.contains(fb.slug)) {
-            seenSlugs.add(fb.slug);
+          final key = fb.tmdbId != null ? 'tmdb_${fb.tmdbId}' : fb.slug;
+          if (seenIds.add(key) && seenIds.add(fb.slug)) {
             results.add(fb);
           }
         }

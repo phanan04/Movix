@@ -118,6 +118,7 @@ class TopTenCarousel extends StatelessWidget {
 
               final movie = top10[index];
               final ratingVal = movie.voteAverage > 0 ? movie.voteAverage.toStringAsFixed(1) : (movie.quality.isNotEmpty ? movie.quality : 'FHD');
+              final heroTag = 'top10_${movie.slug}_${identityHashCode(movie)}_$index';
 
               return RepaintBoundary(
                 child: TVFocusable(
@@ -125,7 +126,13 @@ class TopTenCarousel extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => MovieDetailScreen(slug: movie.slug),
+                        builder: (context) => MovieDetailScreen(
+                          slug: movie.slug,
+                          tmdbId: movie.tmdbId,
+                          tmdbMediaType: movie.tmdbMediaType,
+                          previewMovie: movie,
+                          heroTag: heroTag,
+                        ),
                       ),
                     );
                   },
@@ -137,11 +144,16 @@ class TopTenCarousel extends StatelessWidget {
                       children: [
                         Stack(
                           children: [
-                            CachedPosterImage(
-                              imageUrl: movie.fullPosterUrl,
-                              width: 140,
-                              height: 195,
-                              borderRadius: BorderRadius.circular(16),
+                            Hero(
+                              tag: heroTag,
+                              child: CachedPosterImage(
+                                imageUrl: movie.fullPosterUrl,
+                                width: 140,
+                                height: 195,
+                                memCacheWidth: 280,
+                                memCacheHeight: 390,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                             ),
                             // Top Rating Badge (Movix Red)
                             Positioned(

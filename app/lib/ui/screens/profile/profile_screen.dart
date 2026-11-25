@@ -38,7 +38,7 @@ class ProfileScreen extends StatelessWidget {
         },
         child: ListView(
           controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           children: [
           // Profile Card (Reactive to login state)

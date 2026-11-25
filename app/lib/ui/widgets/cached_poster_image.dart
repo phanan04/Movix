@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shimmer/shimmer.dart';
 import '../../core/theme/app_colors.dart';
 
 class CachedPosterImage extends StatelessWidget {
@@ -54,14 +53,10 @@ class CachedPosterImage extends StatelessWidget {
         memCacheWidth: memCacheWidth,
         memCacheHeight: memCacheHeight,
         fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (context, url) => Shimmer.fromColors(
-          baseColor: AppColors.surface,
-          highlightColor: AppColors.surfaceLight,
-          child: Container(
-            width: width,
-            height: height,
-            color: AppColors.surface,
-          ),
+        placeholder: (context, url) => Container(
+          width: width,
+          height: height,
+          color: AppColors.surface,
         ),
         errorWidget: (context, url, error) => _buildFallback(),
       );

@@ -224,6 +224,12 @@ class TmdbPersonDetails {
 class TmdbMovieData {
   final int id;
   final String mediaType; // 'movie' or 'tv'
+  final String? title;
+  final String? originalTitle;
+  final int? year;
+  final String? releaseDate;
+  final List<String> directors;
+  final int? numberOfEpisodes;
   final String? backdropUrl;
   final String? posterUrl;
   final String? clearLogoUrl;
@@ -243,6 +249,12 @@ class TmdbMovieData {
   const TmdbMovieData({
     required this.id,
     required this.mediaType,
+    this.title,
+    this.originalTitle,
+    this.year,
+    this.releaseDate,
+    this.directors = const [],
+    this.numberOfEpisodes,
     this.backdropUrl,
     this.posterUrl,
     this.clearLogoUrl,
@@ -274,6 +286,10 @@ class TmdbService {
 
   late final Dio _dio;
   final Map<String, TmdbMovieData> _memoryCache = {};
+  final Map<String, TmdbMovieData> _detailByIdCache = {};
+  final Map<String, Future<TmdbMovieData?>> _inFlightDetail = {};
+  final Map<String, ({List<MovieItem> items, DateTime ts})> _trendingCache = {};
+  final Map<String, Future<List<MovieItem>>> _inFlightTrending = {};
 
   TmdbService._internal() {
     _dio = Dio(
@@ -312,44 +328,319 @@ class TmdbService {
     return cleaned.trim();
   }
 
-  /// Tra cứu bổ sung thông tin từ TMDB (Backdrop 4K, Poster HD, Cast có ảnh, Rating thật, Trailer)
-  /// Có cơ chế Cross-Validation nghiêm ngặt đối chiếu diễn viên/đạo diễn để ngăn chặn việc bắt nhầm phim
+  /// Tra cứu chi tiết TMDb trực tiếp theo ID & mediaType (1 HTTP call, có cache & dedup)
+  Future<TmdbMovieData?> getDetailById(int tmdbId, String mediaType) async {
+    if (tmdbId <= 0) return null;
+    final cleanType = (mediaType == 'tv') ? 'tv' : 'movie';
+    final cacheKey = 'id_${cleanType}_$tmdbId';
+
+    if (_detailByIdCache.containsKey(cacheKey)) {
+      return _detailByIdCache[cacheKey];
+    }
+    if (_inFlightDetail.containsKey(cacheKey)) {
+      return await _inFlightDetail[cacheKey];
+    }
+
+    final future = () async {
+      try {
+        final detailRes = await _dio.get(
+          '/$cleanType/$tmdbId',
+          queryParameters: {
+            'append_to_response': 'credits,videos,images',
+            'include_image_language': 'vi,en,null',
+            'language': 'vi-VN',
+          },
+        );
+        if (detailRes.statusCode != 200 || detailRes.data == null) {
+          return null;
+        }
+        final parsed = _parseTmdbDetail(detailRes.data as Map<String, dynamic>, tmdbId, cleanType);
+        _detailByIdCache[cacheKey] = parsed;
+        return parsed;
+      } catch (e) {
+        debugPrint('TMDb getDetailById($cleanType/$tmdbId) error: $e');
+        return null;
+      }
+    }();
+
+    _inFlightDetail[cacheKey] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightDetail.remove(cacheKey);
+    }
+  }
+
+  TmdbMovieData _parseTmdbDetail(Map<String, dynamic> data, int tmdbId, String mediaType) {
+    final rawCast = data['credits']?['cast'] as List? ?? [];
+    final rawCrew = data['credits']?['crew'] as List? ?? [];
+
+    final rawBackdrop = data['backdrop_path']?.toString();
+    final backdropUrl = (rawBackdrop != null && rawBackdrop.isNotEmpty)
+        ? 'https://image.tmdb.org/t/p/w1280$rawBackdrop'
+        : null;
+
+    final rawPoster = data['poster_path']?.toString();
+    final posterUrl = (rawPoster != null && rawPoster.isNotEmpty)
+        ? 'https://image.tmdb.org/t/p/w780$rawPoster'
+        : null;
+
+    final voteAverage = (data['vote_average'] is num) ? (data['vote_average'] as num).toDouble() : 0.0;
+    final voteCount = (data['vote_count'] is int) ? data['vote_count'] as int : 0;
+
+    final castList = <TmdbCast>[];
+    for (final c in rawCast.take(12)) {
+      if (c is Map<String, dynamic>) {
+        castList.add(TmdbCast.fromJson(c));
+      }
+    }
+
+    final directors = <String>[];
+    for (final c in rawCrew) {
+      if (c is Map && c['job'] == 'Director' && c['name'] != null) {
+        final dName = c['name'].toString().trim();
+        if (dName.isNotEmpty && !directors.contains(dName)) {
+          directors.add(dName);
+        }
+      }
+    }
+
+    final rawVideos = data['videos']?['results'] as List? ?? [];
+    String? youtubeTrailerKey;
+    for (final v in rawVideos) {
+      if (v['site'] == 'YouTube' && (v['type'] == 'Trailer' || v['type'] == 'Teaser')) {
+        youtubeTrailerKey = v['key']?.toString();
+        if (v['type'] == 'Trailer') break;
+      }
+    }
+
+    final rawGenres = data['genres'] as List? ?? [];
+    final genres = rawGenres.map((g) => g['name']?.toString() ?? '').where((g) => g.isNotEmpty).toList();
+
+    final runtime = (data['runtime'] is int)
+        ? data['runtime'] as int
+        : ((data['episode_run_time'] is List && (data['episode_run_time'] as List).isNotEmpty)
+            ? (data['episode_run_time'][0] as int?)
+            : null);
+
+    final rawLogos = data['images']?['logos'] as List? ?? [];
+    String? clearLogoUrl;
+    if (rawLogos.isNotEmpty) {
+      final pngLogo = rawLogos.firstWhere(
+        (l) => l['file_path']?.toString().toLowerCase().endsWith('.png') ?? false,
+        orElse: () => rawLogos.first,
+      );
+      final filePath = pngLogo['file_path']?.toString();
+      if (filePath != null && filePath.isNotEmpty) {
+        clearLogoUrl = 'https://image.tmdb.org/t/p/w500$filePath';
+      }
+    }
+
+    final collectionObj = data['belongs_to_collection'] as Map<String, dynamic>?;
+    final collectionId = collectionObj?['id'] as int?;
+    final collectionName = collectionObj?['name']?.toString();
+    final collectionBackdrop = collectionObj?['backdrop_path']?.toString() != null
+        ? 'https://image.tmdb.org/t/p/w1280${collectionObj!['backdrop_path']}'
+        : null;
+
+    final rawNetworks = data['networks'] as List? ?? [];
+    final networks = rawNetworks
+        .map((n) => TmdbCompany.fromJson(n as Map<String, dynamic>))
+        .toList();
+
+    final rawProdCompanies = data['production_companies'] as List? ?? [];
+    final productionCompanies = rawProdCompanies
+        .map((c) => TmdbCompany.fromJson(c as Map<String, dynamic>))
+        .toList();
+
+    final releaseDate = (data['release_date'] ?? data['first_air_date'])?.toString() ?? '';
+    final year = int.tryParse(releaseDate.split('-').first);
+    final numEpisodes = data['number_of_episodes'] is int ? data['number_of_episodes'] as int : null;
+
+    return TmdbMovieData(
+      id: tmdbId,
+      mediaType: mediaType,
+      title: data['title']?.toString() ?? data['name']?.toString(),
+      originalTitle: data['original_title']?.toString() ?? data['original_name']?.toString(),
+      year: year,
+      releaseDate: releaseDate,
+      directors: directors,
+      numberOfEpisodes: numEpisodes,
+      backdropUrl: backdropUrl,
+      posterUrl: posterUrl,
+      clearLogoUrl: clearLogoUrl,
+      voteAverage: voteAverage,
+      voteCount: voteCount,
+      cast: castList,
+      trailerYoutubeKey: youtubeTrailerKey,
+      genres: genres,
+      runtimeMinutes: runtime,
+      overviewVi: data['overview']?.toString(),
+      collectionId: collectionId,
+      collectionName: collectionName,
+      collectionBackdrop: collectionBackdrop,
+      networks: networks,
+      productionCompanies: productionCompanies,
+    );
+  }
+
+  /// Kiểm tra chéo nghiêm ngặt giữa dữ liệu nguồn (KKPhim) và ứng viên TMDb
+  bool _passesCrossValidation(
+    TmdbMovieData candidate, {
+    required String title,
+    String? originName,
+    int? year,
+    List<String> knownActors = const [],
+    List<String> knownDirectors = const [],
+  }) {
+    final validKnownActors = knownActors
+        .map(_normalizeText)
+        .where((s) => s.isNotEmpty && s.length > 2)
+        .toList();
+    final validKnownDirectors = knownDirectors
+        .map(_normalizeText)
+        .where((s) => s.isNotEmpty && s.length > 2)
+        .toList();
+
+    final tmdbPeople = <String>[
+      ...candidate.cast.map((c) => _normalizeText(c.name)),
+      ...candidate.directors.map(_normalizeText),
+    ].where((s) => s.isNotEmpty).toList();
+
+    bool hasPersonMatch = false;
+    for (final ka in validKnownActors) {
+      for (final tp in tmdbPeople) {
+        if (ka == tp || (ka.length > 4 && tp.contains(ka)) || (tp.length > 4 && ka.contains(tp))) {
+          hasPersonMatch = true;
+          break;
+        }
+      }
+      if (hasPersonMatch) break;
+    }
+
+    if (!hasPersonMatch) {
+      for (final kd in validKnownDirectors) {
+        for (final tp in tmdbPeople) {
+          if (kd == tp || (kd.length > 4 && tp.contains(kd)) || (tp.length > 4 && kd.contains(tp))) {
+            hasPersonMatch = true;
+            break;
+          }
+        }
+        if (hasPersonMatch) break;
+      }
+    }
+
+    // Nếu cả nguồn gốc và TMDb đều có dàn diễn viên rõ ràng (>=2 vs >=3) -> BẮT BUỘC trùng ít nhất 1 người
+    // Ngăn chặn triệt để lỗi trùng tên + trùng năm giữa 2 phim khác nhau (ví dụ The Odyssey 2026)
+    if (validKnownActors.length >= 2 && candidate.cast.length >= 3) {
+      if (!hasPersonMatch) {
+        debugPrint(
+          'TMDB Match REJECTED for "$title": 0/${validKnownActors.length} actors matched against TMDb #${candidate.id} (${candidate.title})',
+        );
+        return false;
+      }
+      return true;
+    }
+
+    if (hasPersonMatch) return true;
+
+    // Khi thiếu dữ liệu diễn viên: yêu cầu khớp tiêu đề chuẩn hóa + năm hợp lệ (±1)
+    final tmdbTitle = _normalizeText(candidate.title ?? '');
+    final tmdbOrigTitle = _normalizeText(candidate.originalTitle ?? '');
+    final normTitle = _normalizeText(_sanitizeTitle(title));
+    final normOrig = originName != null ? _normalizeText(_sanitizeTitle(originName)) : '';
+
+    final titleMatches = normTitle.isNotEmpty && (tmdbTitle == normTitle || tmdbOrigTitle == normTitle);
+    final origMatches = normOrig.isNotEmpty &&
+        normOrig.split(' ').length > 1 &&
+        (tmdbTitle == normOrig || tmdbOrigTitle == normOrig);
+
+    if (!titleMatches && !origMatches) {
+      return false;
+    }
+
+    if (year != null && year > 0 && candidate.year != null && candidate.year! > 0) {
+      if ((year - candidate.year!).abs() > 1) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Tra cứu bổ sung thông tin từ TMDB (ưu tiên tmdbId trực tiếp, fallback tìm theo tên + Cross-Validation)
   Future<TmdbMovieData?> enrichMovie({
     required String title,
     String? originName,
     int? year,
     List<String> knownActors = const [],
     List<String> knownDirectors = const [],
+    int? tmdbId,
+    String? mediaType,
+    String? expectedType,
   }) async {
-    final cacheKey = '${title}_${originName ?? ''}_${year ?? ''}'.toLowerCase();
+    final cacheKey = '${tmdbId ?? ''}_${mediaType ?? ''}_${title}_${originName ?? ''}_${year ?? ''}'.toLowerCase();
     if (_memoryCache.containsKey(cacheKey)) {
       return _memoryCache[cacheKey];
     }
 
     try {
+      // 1. Ưu tiên tra cứu trực tiếp bằng tmdbId từ nguồn KKPhim (chính xác 100%, chỉ 1 HTTP request)
+      if (tmdbId != null && tmdbId > 0) {
+        final targetType = (mediaType == 'tv' || mediaType == 'movie')
+            ? mediaType!
+            : (expectedType == 'series' ? 'tv' : 'movie');
+        final direct = await getDetailById(tmdbId, targetType);
+        if (direct != null) {
+          // Kiểm tra nhanh chống lỗi gõ nhầm ID từ upstream
+          final validActors = knownActors.map(_normalizeText).where((s) => s.length > 2).toList();
+          if (validActors.length >= 2 && direct.cast.length >= 3) {
+            final passesCast = _passesCrossValidation(
+              direct,
+              title: title,
+              originName: originName,
+              year: year,
+              knownActors: knownActors,
+              knownDirectors: knownDirectors,
+            );
+            final normTmdbTitle = _normalizeText(direct.title ?? '');
+            final normTmdbOrig = _normalizeText(direct.originalTitle ?? '');
+            final normSrcTitle = _normalizeText(_sanitizeTitle(title));
+            final normSrcOrig = originName != null ? _normalizeText(_sanitizeTitle(originName)) : '';
+            final titleRoughMatch = (normSrcTitle.isNotEmpty && (normTmdbTitle.contains(normSrcTitle) || normSrcTitle.contains(normTmdbTitle))) ||
+                (normSrcOrig.isNotEmpty && (normTmdbOrig.contains(normSrcOrig) || normSrcOrig.contains(normTmdbOrig)));
+            if (passesCast || titleRoughMatch) {
+              _memoryCache[cacheKey] = direct;
+              return direct;
+            }
+          } else {
+            _memoryCache[cacheKey] = direct;
+            return direct;
+          }
+        }
+      }
+
+      // 2. Fallback: Tìm kiếm theo tên trên TMDb
       final queriesToTry = <String>[];
       final cleanTitle = _sanitizeTitle(title);
       final cleanOrigin = originName != null ? _sanitizeTitle(originName) : '';
 
-      // 1. Ưu tiên tìm theo tên chính trước
-      if (cleanTitle.isNotEmpty) {
-        queriesToTry.add(cleanTitle);
-      }
-
-      // 2. Tên gốc originName chỉ tìm khi có từ 2 từ trở lên hoặc khác biệt rõ rệt
-      // Tránh các từ đơn lẻ như "Hamlet", "Home", "Run", "Love" bị dịch bừa từ tên tiếng Việt
-      if (cleanOrigin.isNotEmpty && cleanOrigin != cleanTitle) {
+      if (cleanOrigin.isNotEmpty) {
         final originWords = cleanOrigin.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-        if (originWords.length > 1 || cleanOrigin.length >= 8) {
-          queriesToTry.add(cleanOrigin);
-        } else if (queriesToTry.isEmpty) {
-          // Chỉ thêm từ đơn nếu chưa có query nào
+        if (originWords.length > 1 || cleanOrigin.length >= 6) {
           queriesToTry.add(cleanOrigin);
         }
       }
+      if (cleanTitle.isNotEmpty && !queriesToTry.contains(cleanTitle)) {
+        queriesToTry.add(cleanTitle);
+      }
+      if (queriesToTry.isEmpty && cleanOrigin.isNotEmpty) {
+        queriesToTry.add(cleanOrigin);
+      }
 
-      Map<String, dynamic>? bestResult;
-      String mediaType = 'movie';
+      final preferredMediaType = (expectedType == 'series' || expectedType == 'tvshows') ? 'tv' : (expectedType == 'single' ? 'movie' : null);
+      final candidates = <Map<String, dynamic>>[];
+      final seenIds = <int>{};
 
       for (final query in queriesToTry) {
         if (query.isEmpty) continue;
@@ -364,221 +655,106 @@ class TmdbService {
 
         if (res.statusCode == 200 && res.data != null) {
           final results = res.data['results'] as List? ?? [];
-          final mediaList = results.where((e) => e['media_type'] == 'movie' || e['media_type'] == 'tv').toList();
-
-          if (mediaList.isNotEmpty) {
-            // Ưu tiên trùng năm phát hành nếu có
-            if (year != null && year > 0) {
-              final matchedYear = mediaList.firstWhere(
-                (item) {
-                  final date = (item['release_date'] ?? item['first_air_date'])?.toString() ?? '';
-                  return date.startsWith(year.toString());
-                },
-                orElse: () => mediaList.first,
-              );
-              bestResult = matchedYear;
-            } else {
-              bestResult = mediaList.first;
-            }
-            mediaType = bestResult?['media_type']?.toString() ?? 'movie';
-            break;
-          }
-        }
-      }
-
-      if (bestResult == null) {
-        return null;
-      }
-
-      final tmdbId = bestResult['id'] as int;
-
-      // Truy vấn chi tiết kèm credits, video trailers, và images (logos)
-      final detailRes = await _dio.get(
-        '/$mediaType/$tmdbId',
-        queryParameters: {
-          'append_to_response': 'credits,videos,images',
-          'include_image_language': 'vi,en,null',
-          'language': 'vi-VN',
-        },
-      );
-
-      if (detailRes.statusCode != 200 || detailRes.data == null) {
-        return null;
-      }
-
-      final data = detailRes.data;
-
-      // ==========================================
-      // GUARDRAIL: CROSS-VALIDATION ĐỐI CHIẾU DIỄN VIÊN / TIÊU ĐỀ
-      // ==========================================
-      final rawCast = data['credits']?['cast'] as List? ?? [];
-      final rawCrew = data['credits']?['crew'] as List? ?? [];
-
-      final validKnownActors = knownActors
-          .map(_normalizeText)
-          .where((s) => s.isNotEmpty && s.length > 2)
-          .toList();
-      final validKnownDirectors = knownDirectors
-          .map(_normalizeText)
-          .where((s) => s.isNotEmpty && s.length > 2)
-          .toList();
-
-      if (validKnownActors.length >= 2) {
-        final tmdbPeople = <String>[];
-        for (final c in rawCast.take(15)) {
-          if (c is Map && c['name'] != null) {
-            tmdbPeople.add(_normalizeText(c['name'].toString()));
-          }
-        }
-        for (final c in rawCrew.take(10)) {
-          if (c is Map && c['name'] != null && (c['job'] == 'Director' || c['department'] == 'Directing')) {
-            tmdbPeople.add(_normalizeText(c['name'].toString()));
-          }
-        }
-
-        bool hasPersonMatch = false;
-        for (final ka in validKnownActors) {
-          for (final tp in tmdbPeople) {
-            if (ka == tp || (ka.length > 4 && tp.contains(ka)) || (tp.length > 4 && ka.contains(tp))) {
-              hasPersonMatch = true;
-              break;
+          for (final item in results) {
+            final mt = item['media_type']?.toString();
+            final id = item['id'];
+            if ((mt == 'movie' || mt == 'tv') && id is int && seenIds.add(id)) {
+              candidates.add(Map<String, dynamic>.from(item as Map));
             }
           }
-          if (hasPersonMatch) break;
+        }
+        if (candidates.length >= 5) break;
+      }
+
+      if (candidates.isEmpty) return null;
+
+      // Chấm điểm ứng viên: ưu tiên đúng mediaType, đúng năm, đúng tên
+      final normTitle = _normalizeText(cleanTitle);
+      final normOrigin = _normalizeText(cleanOrigin);
+
+      int scoreCandidate(Map<String, dynamic> c) {
+        int score = 0;
+        final mt = c['media_type']?.toString();
+        if (preferredMediaType != null && mt == preferredMediaType) score += 6;
+
+        final cTitle = _normalizeText(c['title']?.toString() ?? c['name']?.toString() ?? '');
+        final cOrig = _normalizeText(c['original_title']?.toString() ?? c['original_name']?.toString() ?? '');
+        if ((normOrigin.isNotEmpty && (cOrig == normOrigin || cTitle == normOrigin)) ||
+            (normTitle.isNotEmpty && (cTitle == normTitle || cOrig == normTitle))) {
+          score += 10;
         }
 
-        if (!hasPersonMatch) {
-          for (final kd in validKnownDirectors) {
-            for (final tp in tmdbPeople) {
-              if (kd == tp || (kd.length > 4 && tp.contains(kd)) || (tp.length > 4 && kd.contains(tp))) {
-                hasPersonMatch = true;
-                break;
-              }
-            }
-            if (hasPersonMatch) break;
+        final date = (c['release_date'] ?? c['first_air_date'])?.toString() ?? '';
+        final cYear = int.tryParse(date.split('-').first);
+        if (year != null && year > 0 && cYear != null) {
+          if (cYear == year) {
+            score += 10;
+          } else if ((cYear - year).abs() <= 1) {
+            score += 4;
+          } else if ((cYear - year).abs() > 2) {
+            score -= 8;
           }
         }
+        return score;
+      }
 
-        // Nếu KHÔNG có bất kỳ diễn viên hoặc đạo diễn nào trùng khớp
-        if (!hasPersonMatch) {
-          final tmdbTitle = _normalizeText(data['title']?.toString() ?? data['name']?.toString() ?? '');
-          final tmdbOrigTitle = _normalizeText(data['original_title']?.toString() ?? data['original_name']?.toString() ?? '');
-          final normTitle = _normalizeText(title);
-          final normOrig = originName != null ? _normalizeText(originName) : '';
+      candidates.sort((a, b) => scoreCandidate(b).compareTo(scoreCandidate(a)));
 
-          final titleMatches = normTitle.isNotEmpty && (tmdbTitle == normTitle || tmdbOrigTitle == normTitle);
-          final origMatches = normOrig.isNotEmpty &&
-              normOrig.split(' ').length > 1 &&
-              (tmdbTitle == normOrig || tmdbOrigTitle == normOrig);
+      // Thử tối đa 3 ứng viên hàng đầu & kiểm duyệt chéo
+      for (final candidate in candidates.take(3)) {
+        final cid = candidate['id'] as int;
+        final cType = candidate['media_type']?.toString() ?? 'movie';
+        final detail = await getDetailById(cid, cType);
+        if (detail == null) continue;
 
-          if (!titleMatches && !origMatches) {
-            debugPrint('TMDB Match REJECTED for "$title": 0/${validKnownActors.length} actors matched. TMDB: "$tmdbTitle" ($tmdbId)');
-            return null;
-          }
+        if (_passesCrossValidation(
+          detail,
+          title: title,
+          originName: originName,
+          year: year,
+          knownActors: knownActors,
+          knownDirectors: knownDirectors,
+        )) {
+          _memoryCache[cacheKey] = detail;
+          return detail;
         }
       }
 
-      // Backdrop HD (w1280)
-      final rawBackdrop = data['backdrop_path']?.toString();
-      final backdropUrl = (rawBackdrop != null && rawBackdrop.isNotEmpty)
-          ? 'https://image.tmdb.org/t/p/w1280$rawBackdrop'
-          : null;
-
-      // Poster HD (w780)
-      final rawPoster = data['poster_path']?.toString();
-      final posterUrl = (rawPoster != null && rawPoster.isNotEmpty)
-          ? 'https://image.tmdb.org/t/p/w780$rawPoster'
-          : null;
-
-      final voteAverage = (data['vote_average'] is num) ? (data['vote_average'] as num).toDouble() : 0.0;
-      final voteCount = (data['vote_count'] is int) ? data['vote_count'] as int : 0;
-
-      // Diễn viên (Top 12)
-      final castList = <TmdbCast>[];
-      for (final c in rawCast.take(12)) {
-        if (c is Map<String, dynamic>) {
-          castList.add(TmdbCast.fromJson(c));
-        }
-      }
-
-      // Trailer YouTube chính thức
-      final rawVideos = data['videos']?['results'] as List? ?? [];
-      String? youtubeTrailerKey;
-      for (final v in rawVideos) {
-        if (v['site'] == 'YouTube' && (v['type'] == 'Trailer' || v['type'] == 'Teaser')) {
-          youtubeTrailerKey = v['key']?.toString();
-          if (v['type'] == 'Trailer') break; // Ưu tiên Trailer
-        }
-      }
-
-      final rawGenres = data['genres'] as List? ?? [];
-      final genres = rawGenres.map((g) => g['name']?.toString() ?? '').where((g) => g.isNotEmpty).toList();
-
-      final runtime = (data['runtime'] is int)
-          ? data['runtime'] as int
-          : ((data['episode_run_time'] is List && (data['episode_run_time'] as List).isNotEmpty)
-              ? (data['episode_run_time'][0] as int?)
-              : null);
-
-      // 1. Logo PNG trong suốt (Clear Art Logo chuẩn Netflix / Apple TV)
-      final rawLogos = data['images']?['logos'] as List? ?? [];
-      String? clearLogoUrl;
-      if (rawLogos.isNotEmpty) {
-        final pngLogo = rawLogos.firstWhere(
-          (l) => l['file_path']?.toString().toLowerCase().endsWith('.png') ?? false,
-          orElse: () => rawLogos.first,
-        );
-        final filePath = pngLogo['file_path']?.toString();
-        if (filePath != null && filePath.isNotEmpty) {
-          clearLogoUrl = 'https://image.tmdb.org/t/p/w500$filePath';
-        }
-      }
-
-      // 2. Thông tin Bộ sưu tập / Series (Belongs to collection)
-      final collectionObj = data['belongs_to_collection'] as Map<String, dynamic>?;
-      final collectionId = collectionObj?['id'] as int?;
-      final collectionName = collectionObj?['name']?.toString();
-      final collectionBackdrop = collectionObj?['backdrop_path']?.toString() != null
-          ? 'https://image.tmdb.org/t/p/w1280${collectionObj!['backdrop_path']}'
-          : null;
-
-      // 3. Hãng sản xuất & Mạng lưới phát sóng (Networks / Production Companies)
-      final rawNetworks = data['networks'] as List? ?? [];
-      final networks = rawNetworks
-          .map((n) => TmdbCompany.fromJson(n as Map<String, dynamic>))
-          .toList();
-
-      final rawProdCompanies = data['production_companies'] as List? ?? [];
-      final productionCompanies = rawProdCompanies
-          .map((c) => TmdbCompany.fromJson(c as Map<String, dynamic>))
-          .toList();
-
-      final enriched = TmdbMovieData(
-        id: tmdbId,
-        mediaType: mediaType,
-        backdropUrl: backdropUrl,
-        posterUrl: posterUrl,
-        clearLogoUrl: clearLogoUrl,
-        voteAverage: voteAverage,
-        voteCount: voteCount,
-        cast: castList,
-        trailerYoutubeKey: youtubeTrailerKey,
-        genres: genres,
-        runtimeMinutes: runtime,
-        overviewVi: data['overview']?.toString(),
-        collectionId: collectionId,
-        collectionName: collectionName,
-        collectionBackdrop: collectionBackdrop,
-        networks: networks,
-        productionCompanies: productionCompanies,
-      );
-
-      _memoryCache[cacheKey] = enriched;
-      return enriched;
+      return null;
     } catch (e) {
       debugPrint('TMDB Enrich error for $title: $e');
       return null;
     }
+  }
+
+  /// Lấy danh sách phim đề xuất chuẩn MovieItem từ TMDb Recommendations API
+  Future<List<MovieItem>> getRecommendations({
+    required int tmdbId,
+    required String mediaType,
+  }) async {
+    try {
+      final cleanType = mediaType == 'tv' ? 'tv' : 'movie';
+      final res = await _dio.get(
+        '/$cleanType/$tmdbId/recommendations',
+        queryParameters: {
+          'language': 'vi-VN',
+          'page': 1,
+        },
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final results = res.data['results'] as List? ?? [];
+        return results
+            .whereType<Map>()
+            .map((item) => MovieItem.fromTmdb(
+                  Map<String, dynamic>.from(item),
+                  mediaType: item['media_type']?.toString() ?? cleanType,
+                ))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('TMDb getRecommendations error: $e');
+    }
+    return [];
   }
 
   /// Lấy danh sách tên phim đề xuất từ TMDb Recommendations API
@@ -722,6 +898,52 @@ class TmdbService {
       debugPrint('TMDb getMovieReviews error: $e');
     }
     return [];
+  }
+
+  /// Lấy danh sách phim xu hướng thịnh hành toàn cầu chuẩn TMDb (trực tiếp MovieItem, cache + dedup)
+  Future<List<MovieItem>> getTrendingItems({
+    String mediaType = 'all',
+    String timeWindow = 'week',
+  }) async {
+    final key = '${mediaType}_$timeWindow';
+    final cached = _trendingCache[key];
+    if (cached != null && DateTime.now().difference(cached.ts).inMinutes < 10) {
+      return cached.items;
+    }
+    if (_inFlightTrending.containsKey(key)) {
+      return await _inFlightTrending[key]!;
+    }
+
+    final future = () async {
+      try {
+        final res = await _dio.get(
+          '/trending/$mediaType/$timeWindow',
+          queryParameters: {'language': 'vi-VN'},
+        );
+        if (res.statusCode == 200 && res.data != null) {
+          final results = res.data['results'] as List? ?? [];
+          final items = <MovieItem>[];
+          for (final raw in results) {
+            if (raw is! Map) continue;
+            final mt = raw['media_type']?.toString() ?? (mediaType == 'all' ? 'movie' : mediaType);
+            if (mt != 'movie' && mt != 'tv') continue;
+            items.add(MovieItem.fromTmdb(Map<String, dynamic>.from(raw), mediaType: mt));
+          }
+          _trendingCache[key] = (items: items, ts: DateTime.now());
+          return items;
+        }
+      } catch (e) {
+        debugPrint('TMDb getTrendingItems error: $e');
+      }
+      return <MovieItem>[];
+    }();
+
+    _inFlightTrending[key] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightTrending.remove(key);
+    }
   }
 
   /// Lấy danh sách phim xu hướng thịnh hành toàn cầu (All / Movie / TV, Day / Week)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/services/tmdb_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
 import '../../../widgets/cached_poster_image.dart';
 import '../../../widgets/tv_focusable.dart';
 import '../../actor/actor_profile_screen.dart';
@@ -21,13 +22,9 @@ class CastListWidget extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Diễn viên & Vai diễn',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+            style: AppTypography.titleMedium,
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -60,7 +57,6 @@ class CastListWidget extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Rectangular Portrait Card (Chuẩn tỉ lệ điện ảnh, bo nhẹ 6px đồng bộ)
                         Container(
                           width: 86,
                           height: 104,
@@ -84,27 +80,18 @@ class CastListWidget extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        // Tên diễn viên
                         Text(
                           cast.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: AppTypography.labelSmall.copyWith(color: AppColors.textPrimary),
                         ),
-                        // Tên nhân vật (vai diễn)
                         if (cast.character.isNotEmpty)
                           Text(
                             cast.character,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 10,
-                            ),
+                            style: AppTypography.labelSmall.copyWith(fontWeight: FontWeight.w400),
                           ),
                       ],
                     ),

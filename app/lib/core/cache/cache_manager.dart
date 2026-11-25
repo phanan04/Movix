@@ -39,8 +39,8 @@ class CacheManager {
       }
     }
 
-    // 2. Check L2 disk cache
-    if (_prefs != null) {
+    // 2. Check L2 disk cache (skipped on Web to avoid localStorage 5MB quota & sync JSON stalls)
+    if (!kIsWeb && _prefs != null) {
       final diskStr = _prefs!.getString('cache_$key');
       if (diskStr != null) {
         try {
@@ -66,7 +66,7 @@ class CacheManager {
     final mem = _memCache[key];
     if (mem != null) return mem.data;
 
-    if (_prefs != null) {
+    if (!kIsWeb && _prefs != null) {
       final diskStr = _prefs!.getString('cache_$key');
       if (diskStr != null) {
         try {
@@ -80,13 +80,13 @@ class CacheManager {
     return null;
   }
 
-  // Save data to L1 and asynchronously to L2
+  // Save data to L1 and asynchronously to L2 on native platforms
   void set(String key, dynamic data) {
     final now = DateTime.now().millisecondsSinceEpoch;
     _setMem(key, data, now);
 
-    // Write to disk asynchronously without blocking main thread
-    if (_prefs != null) {
+    // Write to disk on native platforms without blocking Web localStorage
+    if (!kIsWeb && _prefs != null) {
       try {
         final payload = jsonEncode({'ts': now, 'data': data});
         _prefs!.setString('cache_$key', payload);

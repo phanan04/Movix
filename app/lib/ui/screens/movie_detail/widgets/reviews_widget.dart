@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/models/movie_model.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
 import '../../../../providers/movie_providers.dart';
 import '../../../widgets/cached_poster_image.dart';
+import '../../../widgets/shimmer_loading.dart';
 
 class MovieReviewsWidget extends ConsumerStatefulWidget {
   final MovieDetail movie;
@@ -127,17 +129,17 @@ class _MovieReviewsWidgetState extends ConsumerState<MovieReviewsWidget> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF01B4E4).withValues(alpha: 0.18),
+                                    color: AppColors.primaryMuted,
                                     borderRadius: BorderRadius.circular(3),
                                     border: Border.all(
-                                      color: const Color(0xFF01B4E4).withValues(alpha: 0.5),
+                                      color: AppColors.primaryBorder,
                                       width: 0.6,
                                     ),
                                   ),
                                   child: const Text(
                                     'TMDb Critic',
                                     style: TextStyle(
-                                      color: Color(0xFF01B4E4),
+                                      color: AppColors.primaryLight,
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -164,22 +166,18 @@ class _MovieReviewsWidgetState extends ConsumerState<MovieReviewsWidget> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1F222A),
+                            color: AppColors.surfaceLight,
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF35383F), width: 0.8),
+                            border: Border.all(color: AppColors.borderLight, width: 0.8),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 14),
+                              const Icon(Icons.star_rounded, color: AppColors.star, size: 14),
                               const SizedBox(width: 3),
                               Text(
                                 '${review.rating!.toStringAsFixed(review.rating! % 1 == 0 ? 0 : 1)}/10',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: AppTypography.labelSmall.copyWith(color: AppColors.textPrimary),
                               ),
                             ],
                           ),
@@ -194,11 +192,7 @@ class _MovieReviewsWidgetState extends ConsumerState<MovieReviewsWidget> {
                     review.content,
                     maxLines: isExpanded ? 500 : 4,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFFCCCCCC),
-                      fontSize: 12.5,
-                      height: 1.45,
-                    ),
+                    style: AppTypography.bodyMedium,
                   ),
 
                   // Expand / Collapse button
@@ -230,11 +224,9 @@ class _MovieReviewsWidgetState extends ConsumerState<MovieReviewsWidget> {
           },
         );
       },
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-        ),
+      loading: () => const ListSkeleton(
+        itemCount: 3,
+        itemHeight: 112,
       ),
       error: (_, __) => const SizedBox.shrink(),
     );

@@ -1,5 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/movie_providers.dart';
@@ -18,9 +20,12 @@ class MainScreen extends ConsumerStatefulWidget {
   ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends ConsumerState<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   final FocusNode _searchFocusNode = FocusNode();
+  final GlobalKey<PopupMenuButtonState<AppSourceMode>> _sourceMenuKey = GlobalKey<PopupMenuButtonState<AppSourceMode>>();
+  late final AnimationController _tabFadeController;
+  late final Animation<double> _tabFadeAnimation;
 
   // Scroll controllers cho 5 tab điều hướng chuẩn trải nghiệm YouTube, Facebook, Twitter
   // Nhấn vào tab đang chọn -> cuộn mượt mà lên đầu trang
@@ -32,7 +37,21 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   final ScrollController _profileScrollController = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    _tabFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+      value: 1.0,
+    );
+    _tabFadeAnimation = Tween<double>(begin: 0.35, end: 1.0).animate(
+      CurvedAnimation(parent: _tabFadeController, curve: Curves.easeOut),
+    );
+  }
+
+  @override
   void dispose() {
+    _tabFadeController.dispose();
     _searchFocusNode.dispose();
     _homeScrollController.dispose();
     _exploreScrollController.dispose();
@@ -54,6 +73,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   void _switchTab(int index, {bool requestFocus = false}) {
+    HapticFeedback.selectionClick();
     if (_currentIndex == index) {
       // Khi người dùng bấm vào tab hiện tại -> cuộn mượt lên đầu (chuẩn YouTube / Facebook)
       switch (index) {
@@ -80,6 +100,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _currentIndex = index;
     });
+    _tabFadeController.forward(from: 0.0);
     if (index == 1 && requestFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_searchFocusNode.hasFocus) {
@@ -91,7 +112,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   Widget _buildSidebarItem(
     int index,
-    IconData icon,
+    IconData activeIcon,
+    IconData inactiveIcon,
     String label, {
     bool requestFocus = false,
   }) {
@@ -101,16 +123,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       preferBelow: false,
       child: SizedBox(
         width: double.infinity,
-        height: 42,
+        height: 44,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Vạch indicator nhỏ màu đỏ #E50914 sát mép trái khi Active
+            // Vạch đỏ dọc sát mép trái khi đang chọn
             if (isSelected)
               Positioned(
                 left: 0,
-                top: 7,
-                bottom: 7,
+                top: 9,
+                bottom: 9,
                 child: Container(
                   width: 3.5,
                   decoration: const BoxDecoration(
@@ -123,25 +145,18 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 ),
               ),
 
-            // Nền bo góc vuông BorderRadius.circular(10) với TVFocusable
             TVFocusable(
+              showBorder: false,
               onPressed: () => _switchTab(index, requestFocus: requestFocus),
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primaryMuted
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(
-                  child: Icon(
-                    icon,
-                    color: isSelected ? Colors.white : AppColors.textMuted,
-                    size: 22,
-                  ),
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                child: Icon(
+                  isSelected ? activeIcon : inactiveIcon,
+                  color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.62),
+                  size: 24,
                 ),
               ),
             ),
@@ -160,15 +175,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       message: label,
       preferBelow: false,
       child: TVFocusable(
+        showBorder: false,
         onPressed: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          width: 40,
-          height: 40,
+          width: 42,
+          height: 42,
           alignment: Alignment.center,
           child: Icon(
             icon,
-            color: AppColors.textMuted,
+            color: Colors.white.withValues(alpha: 0.62),
             size: 22,
           ),
         ),
@@ -181,6 +197,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: PopupMenuButton<AppSourceMode>(
+        key: _sourceMenuKey,
         tooltip: 'Chuyển nguồn: TMDb / KKPhim',
         offset: const Offset(62, 0),
         constraints: const BoxConstraints(minWidth: 130, maxWidth: 160),
@@ -192,6 +209,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         elevation: 12,
         initialValue: currentMode,
         onSelected: (mode) {
+          HapticFeedback.selectionClick();
           ref.read(appSourceModeProvider.notifier).state = mode;
         },
         itemBuilder: (context) => [
@@ -237,14 +255,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
         ],
         child: TVFocusable(
-          onPressed: null,
+          onPressed: () => _sourceMenuKey.currentState?.showButtonMenu(),
           borderRadius: BorderRadius.circular(10),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
               'assets/images/logo.png',
-              width: 42,
-              height: 42,
+              width: 38,
+              height: 38,
               fit: BoxFit.cover,
             ),
           ),
@@ -255,14 +273,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   Widget _buildTabletSidebar(BuildContext context) {
     return Container(
-      width: 68,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0B0C0E),
-        border: Border(
-          right: BorderSide(
-            color: Color(0x14FFFFFF),
-            width: 0.8,
-          ),
+      width: 64,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.black.withValues(alpha: 0.62),
+            Colors.black.withValues(alpha: 0.24),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.65, 1.0],
         ),
       ),
       child: SafeArea(
@@ -274,14 +295,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
             const Spacer(),
 
-            // 2. CENTER: Cụm điều hướng chính căn giữa theo chiều dọc
-            _buildSidebarItem(1, Icons.search_rounded, 'Tìm kiếm', requestFocus: true),
-            const SizedBox(height: 22),
-            _buildSidebarItem(0, Icons.home_rounded, 'Trang chủ'),
-            const SizedBox(height: 22),
-            _buildSidebarItem(2, Icons.bookmark_rounded, 'Danh sách của tôi'),
-            const SizedBox(height: 22),
-            _buildSidebarItem(3, Icons.file_download_rounded, 'Tải xuống'),
+            // 2. CENTER: Cụm điều hướng chính chỉ icon, căn giữa theo chiều dọc
+            _buildSidebarItem(0, Icons.home_rounded, Icons.home_outlined, 'Trang chủ'),
+            const SizedBox(height: 18),
+            _buildSidebarItem(1, Icons.search_rounded, Icons.search_rounded, 'Tìm kiếm', requestFocus: true),
+            const SizedBox(height: 18),
+            _buildSidebarItem(2, Icons.bookmark_rounded, Icons.bookmark_border_rounded, 'Danh sách của tôi'),
+            const SizedBox(height: 18),
+            _buildSidebarItem(3, Icons.file_download_rounded, Icons.file_download_outlined, 'Tải xuống'),
 
             const Spacer(),
 
@@ -296,10 +317,116 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 );
               },
             ),
-            const SizedBox(height: 18),
-            _buildSidebarItem(4, Icons.person_rounded, 'Tài khoản'),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+            _buildSidebarItem(4, Icons.person_rounded, Icons.person_outline_rounded, 'Tài khoản'),
+            const SizedBox(height: 16),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernPillBottomBar(BuildContext context) {
+    final navItems = [
+      (Icons.home_rounded, Icons.home_outlined, 'Trang chủ'),
+      (Icons.explore_rounded, Icons.explore_outlined, 'Khám phá'),
+      (Icons.bookmark_rounded, Icons.bookmark_border_rounded, 'Danh sách'),
+      (Icons.file_download_rounded, Icons.file_download_outlined, 'Tải xuống'),
+      (Icons.person_rounded, Icons.person_outline_rounded, 'Cá nhân'),
+    ];
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(36),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          height: 64,
+          constraints: const BoxConstraints(maxWidth: 440),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1116).withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(36),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.14),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.50),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(navItems.length, (index) {
+              final item = navItems[index];
+              final isSelected = _currentIndex == index;
+              return Expanded(
+                child: TVFocusable(
+                  showBorder: false,
+                  scale: 0.94,
+                  onPressed: () => _switchTab(index, requestFocus: false),
+                  borderRadius: BorderRadius.circular(24),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.16)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(22),
+                      border: isSelected
+                          ? Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.35),
+                              width: 0.8,
+                            )
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PopIconSwitch(
+                          child: Icon(
+                            isSelected ? item.$1 : item.$2,
+                            key: ValueKey('${item.$3}_$isSelected'),
+                            size: 21,
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.$3,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.white.withValues(alpha: 0.55),
+                            letterSpacing: -0.2,
+                            height: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -316,90 +443,89 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       HomeScreen(
         onSearchTap: () => _switchTab(1, requestFocus: true),
         scrollController: _homeScrollController,
+        hasOverlayRail: isTabletLandscape,
       ),
-      ExploreScreen(
-        focusNode: _searchFocusNode,
-        scrollController: _exploreScrollController,
+      Padding(
+        padding: EdgeInsets.only(left: isTabletLandscape ? 64 : 0),
+        child: ExploreScreen(
+          focusNode: _searchFocusNode,
+          scrollController: _exploreScrollController,
+        ),
       ),
-      MyListScreen(
-        scrollController: _myListFavScrollController,
-        historyScrollController: _myListHistScrollController,
+      Padding(
+        padding: EdgeInsets.only(left: isTabletLandscape ? 64 : 0),
+        child: MyListScreen(
+          scrollController: _myListFavScrollController,
+          historyScrollController: _myListHistScrollController,
+        ),
       ),
-      DownloadScreen(
-        onExploreTap: () => _switchTab(1, requestFocus: false),
-        scrollController: _downloadScrollController,
+      Padding(
+        padding: EdgeInsets.only(left: isTabletLandscape ? 64 : 0),
+        child: DownloadScreen(
+          onExploreTap: () => _switchTab(1, requestFocus: false),
+          scrollController: _downloadScrollController,
+        ),
       ),
-      ProfileScreen(
-        scrollController: _profileScrollController,
+      Padding(
+        padding: EdgeInsets.only(left: isTabletLandscape ? 64 : 0),
+        child: ProfileScreen(
+          scrollController: _profileScrollController,
+        ),
       ),
     ];
 
     if (isTabletLandscape) {
-      // Tablet Landscape / Wide Screen Layout: Sleek Side Navigation Rail
+      // Tablet Landscape / Wide Screen Layout: Transparent Icon-Only Rail overlaid on Hero
       return Scaffold(
         backgroundColor: AppColors.background,
-        body: Row(
+        body: Stack(
           children: [
-            _buildTabletSidebar(context),
-            Expanded(
-              child: IndexedStack(
-                index: _currentIndex,
-                children: pages,
+            Positioned.fill(
+              child: FadeTransition(
+                opacity: _tabFadeAnimation,
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: pages,
+                ),
               ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 64,
+              child: _buildTabletSidebar(context),
             ),
           ],
         ),
       );
     }
 
-    // Standard Mobile Phone Layout
+    // Standard Mobile Phone Layout: Modern Floating iOS Pill Bar
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F1014),
-          border: Border(
-            top: BorderSide(color: Color(0xFF1F222A), width: 0.5),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: FadeTransition(
+              opacity: _tabFadeAnimation,
+              child: IndexedStack(
+                index: _currentIndex,
+                children: pages,
+              ),
+            ),
           ),
-        ),
-        child: BottomNavigationBar(
-          backgroundColor: const Color(0xFF0F1014),
-          currentIndex: _currentIndex,
-          onTap: (index) => _switchTab(index, requestFocus: false),
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.textMuted,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_filled),
-              label: 'Trang chủ',
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: bottomInset > 0 ? bottomInset + 4 : 16,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: _buildModernPillBottomBar(context),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.explore_outlined),
-              activeIcon: Icon(Icons.explore_rounded),
-              label: 'Khám phá',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bookmark_border_rounded),
-              activeIcon: Icon(Icons.bookmark_rounded),
-              label: 'Danh sách',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.file_download_outlined),
-              activeIcon: Icon(Icons.file_download_rounded),
-              label: 'Tải xuống',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline_rounded),
-              activeIcon: Icon(Icons.person_rounded),
-              label: 'Cá nhân',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

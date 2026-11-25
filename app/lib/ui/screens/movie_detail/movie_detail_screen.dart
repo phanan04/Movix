@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api/phim_api_service.dart';
 import '../../../core/cache/user_storage.dart';
 import '../../../core/models/movie_model.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
 import '../../../providers/movie_providers.dart';
 import '../../widgets/cached_poster_image.dart';
 import '../../widgets/episode_grid_widget.dart';
@@ -10,6 +13,7 @@ import '../../widgets/movie_card.dart';
 import '../../widgets/rating_badge.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/app_state_views.dart';
+import '../../widgets/shimmer_loading.dart';
 import '../../widgets/tv_focusable.dart';
 import '../player/player_screen.dart';
 import 'widgets/movie_comments_widget.dart';
@@ -25,8 +29,19 @@ enum DetailViewMode {
 
 class MovieDetailScreen extends ConsumerStatefulWidget {
   final String slug;
+  final int? tmdbId;
+  final String? tmdbMediaType;
+  final MovieItem? previewMovie;
+  final String? heroTag;
 
-  const MovieDetailScreen({super.key, required this.slug});
+  const MovieDetailScreen({
+    super.key,
+    required this.slug,
+    this.tmdbId,
+    this.tmdbMediaType,
+    this.previewMovie,
+    this.heroTag,
+  });
 
   @override
   ConsumerState<MovieDetailScreen> createState() => _MovieDetailScreenState();
@@ -43,9 +58,16 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   bool? _userSetEpisodeGridMode;
   int _selectedMobileFeedbackTab = 0;
 
+  MovieDetailRequest get _detailRequest => MovieDetailRequest(
+        slug: widget.slug,
+        tmdbId: widget.tmdbId,
+        tmdbMediaType: widget.tmdbMediaType,
+        previewMovie: widget.previewMovie,
+      );
+
   @override
   Widget build(BuildContext context) {
-    final detailAsync = ref.watch(movieDetailProvider(widget.slug));
+    final detailAsync = ref.watch(movieDetailProvider(_detailRequest));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -64,7 +86,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
           ),
           body: AppErrorStateWidget(
             message: err.toString(),
-            onRetry: () => ref.refresh(movieDetailProvider(widget.slug).future),
+            onRetry: () => ref.invalidate(movieDetailProvider(_detailRequest)),
           ),
         ),
       ),
@@ -85,6 +107,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       lang: movie.lang,
       time: movie.time,
       categoryNames: movie.categories.map((c) => c.name).toList(),
+      voteAverage: movie.voteAverage,
+      tmdbId: movie.tmdbId,
+      tmdbMediaType: movie.tmdbMediaType,
     );
 
     final episodes = movie.episodes.isNotEmpty
@@ -113,7 +138,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       color: AppColors.primary,
       backgroundColor: AppColors.surface,
       onRefresh: () async {
-        return ref.refresh(movieDetailProvider(widget.slug).future);
+        ref.invalidate(movieDetailProvider(_detailRequest));
+        return ref.read(movieDetailProvider(_detailRequest).future);
       },
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -139,7 +165,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
             ValueListenableBuilder<List<MovieItem>>(
               valueListenable: _userStorage.myListNotifier,
               builder: (context, _, __) {
-                final inList = _userStorage.isInMyList(movie.slug);
+                final inList = _userStorage.isInMyList(movie.slug, tmdbId: movie.tmdbId);
                 return IconButton(
                   icon: Container(
                     padding: const EdgeInsets.all(8),
@@ -147,10 +173,13 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       color: Colors.black.withValues(alpha: 0.5),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                      color: inList ? AppColors.primary : Colors.white,
-                      size: 20,
+                    child: PopIconSwitch(
+                      child: Icon(
+                        inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                        key: ValueKey(inList),
+                        color: inList ? AppColors.primary : Colors.white,
+                        size: 20,
+                      ),
                     ),
                   ),
                   onPressed: () {
@@ -175,14 +204,25 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
             const SizedBox(width: 8),
           ],
           flexibleSpace: FlexibleSpaceBar(
+            collapseMode: CollapseMode.parallax,
             background: Stack(
               fit: StackFit.expand,
               children: [
-                CachedPosterImage(
-                  imageUrl: movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl,
-                  fit: BoxFit.cover,
-                  alignment: const Alignment(0.0, -0.15),
-                ),
+                if (widget.heroTag != null)
+                  Hero(
+                    tag: widget.heroTag!,
+                    child: CachedPosterImage(
+                      imageUrl: movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl,
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0.0, -0.15),
+                    ),
+                  )
+                else
+                  CachedPosterImage(
+                    imageUrl: movie.backdropUrl.isNotEmpty ? movie.backdropUrl : movie.verticalPosterUrl,
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0.0, -0.15),
+                  ),
                 Container(
                   color: Colors.black.withValues(alpha: 0.18),
                 ),
@@ -397,15 +437,23 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                         ).then((_) {
                           if (mounted) setState(() {});
                         });
+                      } else {
+                        AppToast.show(context, 'Phim hiện chưa có nguồn phát trực tuyến', icon: Icons.info_outline_rounded);
                       }
                     },
-                    icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                    icon: Icon(
+                      episodes.isNotEmpty ? Icons.play_arrow_rounded : Icons.schedule_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                     label: Text(
-                      progress != null
-                          ? (progress.positionSeconds > 10
-                              ? 'Tiếp tục xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
-                              : 'Xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}')
-                          : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim Ngay'),
+                      episodes.isEmpty
+                          ? 'Chưa có nguồn phát'
+                          : (progress != null
+                              ? (progress.positionSeconds > 10
+                                  ? 'Tiếp tục xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}'
+                                  : 'Xem: ${progress.episodeName.isNotEmpty ? progress.episodeName : "Tập ${progress.episodeSlug}"}')
+                              : 'Xem ${episodes.first.name}'),
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -413,7 +461,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: episodes.isNotEmpty ? AppColors.primary : const Color(0xFF2B2E38),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -429,7 +477,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     ValueListenableBuilder<List<MovieItem>>(
                       valueListenable: _userStorage.myListNotifier,
                       builder: (context, _, __) {
-                        final inList = _userStorage.isInMyList(movie.slug);
+                        final inList = _userStorage.isInMyList(movie.slug, tmdbId: movie.tmdbId);
                         return _buildMobileActionItem(
                           icon: inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
                           label: 'Danh sách',
@@ -442,7 +490,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       icon: _isLiked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
                       label: 'Thích',
                       color: _isLiked ? AppColors.primary : AppColors.textPrimary,
-                      onTap: () => setState(() => _isLiked = !_isLiked),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _isLiked = !_isLiked);
+                      },
                     ),
                     _buildMobileActionItem(
                       icon: Icons.share_outlined,
@@ -606,10 +657,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _selectedMobileFeedbackTab == 1 ? const Color(0xFF01B4E4) : Colors.white.withValues(alpha: 0.08),
+                          color: _selectedMobileFeedbackTab == 1 ? AppColors.primary : AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: _selectedMobileFeedbackTab == 1 ? const Color(0xFF01B4E4) : Colors.white12,
+                            color: _selectedMobileFeedbackTab == 1 ? AppColors.primary : AppColors.borderSubtle,
                             width: 0.8,
                           ),
                         ),
@@ -619,7 +670,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                             Icon(
                               Icons.star_rounded,
                               size: 14,
-                              color: _selectedMobileFeedbackTab == 1 ? Colors.white : const Color(0xFF01B4E4),
+                              color: _selectedMobileFeedbackTab == 1 ? Colors.white : AppColors.star,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -658,19 +709,19 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF01B4E4).withValues(alpha: 0.18),
+                        color: AppColors.primaryMuted,
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF01B4E4).withValues(alpha: 0.45), width: 0.8),
+                        border: Border.all(color: AppColors.primaryBorder, width: 0.8),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.auto_awesome_rounded, color: Color(0xFF01B4E4), size: 11),
+                          Icon(Icons.auto_awesome_rounded, color: AppColors.primaryLight, size: 11),
                           SizedBox(width: 3),
                           Text(
                             'TMDb',
                             style: TextStyle(
-                              color: Color(0xFF01B4E4),
+                              color: AppColors.primaryLight,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -705,10 +756,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                           ),
                         );
                       },
-                      loading: () => const SizedBox(
-                        height: 180,
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
-                      ),
+                      loading: () => const MovieCarouselSkeleton(),
                       error: (_, __) => const SizedBox.shrink(),
                     );
                   },
@@ -921,314 +969,223 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     final mainTitle = movie.name.split('/').first.trim();
 
     // Nhãn nút phát chuẩn xác: luôn hiển thị đúng tập đang xem dở
-    final playLabel = progress != null && resumeEp != null
-        ? (progress.positionSeconds > 10
-            ? 'Tiếp tục ${resumeEp.name}'
-            : 'Xem ${resumeEp.name}')
-        : (episodes.isNotEmpty ? 'Xem ${episodes.first.name}' : 'Xem Phim');
+    final playLabel = episodes.isEmpty
+        ? 'Chưa có nguồn phát'
+        : (progress != null && resumeEp != null
+            ? (progress.positionSeconds > 10
+                ? 'Tiếp tục ${resumeEp.name}'
+                : 'Xem ${resumeEp.name}')
+            : 'Xem ${episodes.first.name}');
 
     final overviewLeft = SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 520.0,
-        ),
+        constraints: const BoxConstraints(maxWidth: 520.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Row gồm Poster đứng 2:3 bên trái + Tiêu đề & Metadata bên phải
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // 1. Clear Logo Art hoặc Tiêu đề phim
+            if (movie.clearLogoUrl != null && movie.clearLogoUrl!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 76, maxWidth: 340),
+                  child: CachedPosterImage(
+                    imageUrl: movie.clearLogoUrl!,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              )
+            else ...[
+              Text(
+                mainTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                  height: 1.15,
+                ),
+              ),
+              if (movie.originName.isNotEmpty && movie.originName != mainTitle) ...[
+                const SizedBox(height: 4),
+                Text(
+                  movie.originName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
+                ),
+              ],
+              const SizedBox(height: 10),
+            ],
+
+            // 2. Metadata badges (Năm, Chất lượng, Ngôn ngữ, Thời lượng, Điểm, Nhà mạng/Hãng phim)
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // 1. Poster đứng 2:3 với viền mỏng và đổ bóng
+                if (movie.year > 0)
+                  Text(
+                    '${movie.year}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
                 Container(
-                  width: 104,
-                  height: 152,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.60),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                    color: Colors.white.withValues(alpha: 0.14),
+                    border: Border.all(color: Colors.white30, width: 0.8),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: CachedPosterImage(
-                      imageUrl: movie.verticalPosterUrl.isNotEmpty
-                          ? movie.verticalPosterUrl
-                          : movie.posterUrl,
-                      fit: BoxFit.cover,
-                    ),
+                  child: Text(
+                    movie.quality.isNotEmpty ? movie.quality : 'FHD',
+                    style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
                   ),
                 ),
-                const SizedBox(width: 16),
-
-                // 2. Tiêu đề, tên gốc & Metadata badges
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                if (movie.lang.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 0.8),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      movie.lang,
+                      style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                if (movie.time.isNotEmpty)
+                  Text(
+                    movie.time,
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                if (movie.voteAverage > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Clear Logo Art (Feature 4)
-                      if (movie.clearLogoUrl != null && movie.clearLogoUrl!.isNotEmpty) ...[
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 62, maxWidth: 280),
-                          child: CachedPosterImage(
-                            imageUrl: movie.clearLogoUrl!,
-                            fit: BoxFit.contain,
-                            alignment: Alignment.centerLeft,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                      ] else ...[
-                        Text(
-                          mainTitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                            height: 1.15,
-                            shadows: [
-                              Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
-                              Shadow(color: Colors.black87, blurRadius: 16),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (movie.originName.isNotEmpty && (movie.clearLogoUrl != null || movie.originName != mainTitle)) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          movie.originName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.65),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-
-                      // Metadata badges wrap
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 5,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (movie.voteAverage > 0) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1F222A),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: const Color(0xFF35383F), width: 0.8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 12),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    movie.voteAverage.toStringAsFixed(1),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          if (movie.year > 0)
-                            Text(
-                              '${movie.year}',
-                              style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
-                            ),
-                          if (movie.categories.isNotEmpty) ...[
-                            const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 12)),
-                            Text(
-                              movie.categories.first.name,
-                              style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                          if (movie.episodeCurrent.isNotEmpty) ...[
-                            const Text('•', style: TextStyle(color: Color(0xFF808080), fontSize: 12)),
-                            Text(
-                              movie.episodeCurrent,
-                              style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white54, width: 0.8),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              movie.quality.isNotEmpty ? movie.quality : 'HD',
-                              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white38, width: 0.8),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: const Text(
-                              '16+',
-                              style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          Text(
-                            movie.lang.isNotEmpty ? movie.lang : 'Vietsub',
-                            style: const TextStyle(color: Color(0xFFB3B3B3), fontSize: 11.5),
-                          ),
-                          // Hãng sản xuất & Kênh phát sóng (Feature 6)
-                          if (movie.networks.isNotEmpty || movie.productionCompanies.isNotEmpty) ...[
-                            ...[...movie.networks, ...movie.productionCompanies].take(2).map((comp) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(3),
-                                  border: Border.all(color: Colors.white24, width: 0.6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (comp.logoUrl != null) ...[
-                                      CachedPosterImage(
-                                        imageUrl: comp.logoUrl!,
-                                        height: 11,
-                                        fit: BoxFit.contain,
-                                      ),
-                                      const SizedBox(width: 3),
-                                    ],
-                                    Text(
-                                      comp.name,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ],
+                      const Icon(Icons.star_rounded, color: AppColors.star, size: 15),
+                      const SizedBox(width: 3),
+                      Text(
+                        movie.voteAverage.toStringAsFixed(1),
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
-                ),
+                if (movie.networks.isNotEmpty)
+                  ...movie.networks.take(2).map((n) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white24, width: 0.5),
+                        ),
+                        child: Text(
+                          n.name,
+                          style: const TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w600),
+                        ),
+                      ))
+                else if (movie.productionCompanies.isNotEmpty)
+                  ...movie.productionCompanies.take(1).map((c) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white24, width: 0.5),
+                        ),
+                        child: Text(
+                          c.name,
+                          style: const TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w600),
+                        ),
+                      )),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Tóm tắt nội dung giới hạn tối đa 3 dòng
+            // 3. Tóm tắt 3 dòng
             Text(
-              movie.content.isNotEmpty ? _cleanContent(movie.content) : 'Chưa có tóm tắt cho phim này.',
+              movie.content.isNotEmpty
+                  ? _cleanContent(movie.content)
+                  : 'Chưa có tóm tắt cho phim này.',
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFFD4D4D4),
-                height: 1.45,
-                shadows: [
-                  Shadow(color: Colors.black87, blurRadius: 8),
-                ],
-              ),
+              style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary, height: 1.45),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
-            // Dòng Diễn viên
-            RichText(
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              text: TextSpan(
-                style: const TextStyle(fontSize: 12.5, height: 1.4),
-                children: [
-                  const TextSpan(
-                    text: 'Diễn viên: ',
-                    style: TextStyle(color: Color(0xFF9E9E9E), fontWeight: FontWeight.w600),
+            // 4. Diễn viên & Đạo diễn
+            if (movie.actors.isNotEmpty && movie.actors.first.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: RichText(
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 12.5),
+                    children: [
+                      const TextSpan(text: 'Diễn viên: ', style: TextStyle(color: AppColors.textMuted)),
+                      TextSpan(
+                        text: movie.actors.take(5).join(', '),
+                        style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
-                  TextSpan(
-                    text: movie.tmdbCast.isNotEmpty
-                        ? movie.tmdbCast.take(6).map((c) => c.name).join(', ')
-                        : (movie.actors.isNotEmpty ? movie.actors.take(6).join(', ') : 'Đang cập nhật'),
-                    style: const TextStyle(color: Color(0xFFE5E5E5), fontWeight: FontWeight.w400),
-                  ),
-                ],
-              ),
-            ),
-            if (movie.directors.isNotEmpty && movie.directors.first.isNotEmpty) ...[
-              const SizedBox(height: 3),
-              RichText(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  style: const TextStyle(fontSize: 12.5, height: 1.4),
-                  children: [
-                    const TextSpan(
-                      text: 'Đạo diễn: ',
-                      style: TextStyle(color: Color(0xFF9E9E9E), fontWeight: FontWeight.w600),
-                    ),
-                    TextSpan(
-                      text: movie.directors.join(', '),
-                      style: const TextStyle(color: Color(0xFFE5E5E5), fontWeight: FontWeight.w400),
-                    ),
-                  ],
                 ),
               ),
-            ],
-            const SizedBox(height: 14),
+            if (movie.directors.isNotEmpty && movie.directors.first.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: RichText(
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 12.5),
+                    children: [
+                      const TextSpan(text: 'Đạo diễn: ', style: TextStyle(color: AppColors.textMuted)),
+                      TextSpan(
+                        text: movie.directors.join(', '),
+                        style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
 
-            // Chọn Server phát cho phim lẻ có nhiều bản thuyết minh / vietsub
+            // Chọn Server phát cho phim lẻ nếu có nhiều bản
             if (isSingleEpisodeMovie && movie.episodes.length > 1) ...[
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
                 children: List.generate(movie.episodes.length, (sIdx) {
                   final isServerSelected = _selectedServerIndex == sIdx;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TVFocusable(
-                      showBorder: false,
-                      onPressed: () {
-                        setState(() {
-                          _selectedServerIndex = sIdx;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isServerSelected ? AppColors.primary : AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: isServerSelected ? AppColors.primary : AppColors.borderLight,
-                            width: 1,
-                          ),
+                  return TVFocusable(
+                    showBorder: false,
+                    onPressed: () {
+                      setState(() {
+                        _selectedServerIndex = sIdx;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isServerSelected ? AppColors.primary : Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isServerSelected ? AppColors.primary : Colors.white24,
+                          width: 1,
                         ),
-                        child: Text(
-                          movie.episodes[sIdx].serverName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isServerSelected ? FontWeight.bold : FontWeight.w500,
-                            color: Colors.white,
-                          ),
+                      ),
+                      child: Text(
+                        movie.episodes[sIdx].serverName,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: isServerSelected ? FontWeight.bold : FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1238,12 +1195,13 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               const SizedBox(height: 12),
             ],
 
-            // Cụm hành động: Nút Xem phim chính đỏ rực + Hàng nút phụ bên dưới
+            // 5. Nút CTA chính (Đỏ Movix)
             SizedBox(
               width: double.infinity,
               height: 44,
               child: _buildPrimaryPlayButton(
                 label: playLabel,
+                available: episodes.isNotEmpty,
                 onTap: () {
                   if (episodes.isNotEmpty && resumeEp != null) {
                     Navigator.push(
@@ -1259,94 +1217,92 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                     ).then((_) {
                       if (mounted) setState(() {});
                     });
+                  } else {
+                    AppToast.show(context, 'Phim hiện chưa có nguồn phát trực tuyến', icon: Icons.info_outline_rounded);
                   }
                 },
               ),
             ),
             const SizedBox(height: 10),
 
-            // Hàng nút phụ ngang hàng: Bookmark, Like, Share, Tương tự, Bình luận
-            Row(
+            // 6. Hàng nút hành động phụ: Nút tròn Lưu/Thích/Chia sẻ + Tương tự/Bình luận
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 ValueListenableBuilder<List<MovieItem>>(
                   valueListenable: _userStorage.myListNotifier,
                   builder: (context, _, __) {
-                    final inList = _userStorage.isInMyList(movie.slug);
+                    final inList = _userStorage.isInMyList(movie.slug, tmdbId: movie.tmdbId);
                     return _buildCircleActionButton(
                       icon: inList ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                      color: inList ? AppColors.primary : AppColors.textPrimary,
+                      tooltip: inList ? 'Đã lưu' : 'Lưu phim',
+                      color: inList ? AppColors.primary : Colors.white,
                       onTap: () => _userStorage.toggleMyList(movieItem),
                     );
                   },
                 ),
-                const SizedBox(width: 8),
                 _buildCircleActionButton(
                   icon: _isLiked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
-                  color: _isLiked ? AppColors.primary : AppColors.textPrimary,
-                  onTap: () => setState(() => _isLiked = !_isLiked),
+                  tooltip: 'Thích',
+                  color: _isLiked ? AppColors.primary : Colors.white,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _isLiked = !_isLiked);
+                  },
                 ),
-                const SizedBox(width: 8),
                 _buildCircleActionButton(
                   icon: Icons.share_outlined,
-                  color: AppColors.textPrimary,
+                  tooltip: 'Chia sẻ',
                   onTap: () => AppToast.show(context, 'Đã sao chép liên kết phim', icon: Icons.link_rounded),
                 ),
-                if (!isSingleEpisodeMovie) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildSecondaryActionButton(
-                      icon: Icons.grid_view_rounded,
-                      label: 'Tương tự',
-                      onTap: () => setState(() => _viewMode = DetailViewMode.similar),
-                    ),
+                if (!isSingleEpisodeMovie)
+                  _buildSecondaryActionButton(
+                    icon: Icons.grid_view_rounded,
+                    label: 'Tương tự',
+                    onTap: () => setState(() => _viewMode = DetailViewMode.similar),
                   ),
-                ],
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildSecondaryActionButton(
-                    icon: Icons.chat_bubble_outline_rounded,
-                    label: 'Bình luận',
-                    onTap: () => _showCommentsModal(context, movie),
-                  ),
+                _buildSecondaryActionButton(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  label: 'Bình luận',
+                  onTap: () => _showCommentsModal(context, movie),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
 
-            // Dàn diễn viên & Hình chân dung (Feature 1 - Tap mở hồ sơ diễn viên)
-            CastListWidget(
-              tmdbCast: movie.tmdbCast,
-              fallbackActors: movie.actors,
-            ),
+            // 7. Diễn viên & Vai diễn
+            if (movie.tmdbCast.isNotEmpty || movie.actors.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              CastListWidget(
+                tmdbCast: movie.tmdbCast,
+                fallbackActors: movie.actors,
+              ),
+            ],
 
-            // Trọn bộ sưu tập / Franchise (Dành cho phim bộ ở cột trái)
-            if (!isSingleEpisodeMovie && movie.collectionId != null) ...[
-              const SizedBox(height: 16),
+            // 8. Trọn bộ sưu tập (cho phim bộ nếu có)
+            if (!isSingleEpisodeMovie && movie.collectionId != null)
               CollectionWidget(
                 collectionId: movie.collectionId!,
                 collectionName: movie.collectionName ?? '',
                 currentMovieSlug: movie.slug,
+                currentTmdbId: movie.tmdbId,
               ),
-            ],
           ],
         ),
       ),
     );
 
-    // Nếu phim chỉ có 1 tập (phim lẻ): Bố cục 2 cột cân đối hoàn hảo
-    // Cột trái (flex 48): Thông tin phim & diễn viên
-    // Cột phải (flex 52): Bộ sưu tập Franchise + Phim tương tự TMDb Smart Match trong panel tối mờ
+    // Nếu phim chỉ có 1 tập (phim lẻ): bố cục 2 cột (Thông tin trái 48%, Đề xuất/Bộ sưu tập phải 52%)
     if (isSingleEpisodeMovie) {
       return Padding(
         padding: const EdgeInsets.only(left: 36, right: 28, bottom: 16),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               flex: 48,
-              child: Center(
-                child: overviewLeft,
-              ),
+              child: Center(child: overviewLeft),
             ),
             const SizedBox(width: 24),
             Expanded(
@@ -1358,23 +1314,17 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       );
     }
 
-    // Nếu phim có nhiều tập: chia 2 cột cân đối hoàn hảo (Cột trái căn giữa trục dọc tự nhiên)
+    // Nếu phim có nhiều tập: bố cục 2 cột (Thông tin trái 46%, Danh sách tập phải 54%)
     return Padding(
       padding: const EdgeInsets.only(left: 36, right: 28, bottom: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Bên trái: Thông tin phim & cụm menu hành động (Tự động căn giữa trục dọc)
           Expanded(
             flex: 46,
-            child: Center(
-              child: overviewLeft,
-            ),
+            child: Center(child: overviewLeft),
           ),
-
           const SizedBox(width: 24),
-
-          // Bên phải: Danh sách tập phim chuẩn Apple TV
           Expanded(
             flex: 54,
             child: _buildNetflixEpisodeList(movie, episodes, progress),
@@ -1384,75 +1334,50 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     );
   }
 
-  /// Cột bên phải dành riêng cho Phim lẻ (Single Movie Right Panel):
-  /// - Bộ sưu tập Franchise (nếu có)
-  /// - Phim tương tự & Đề xuất (TMDb Smart Match) dạng lưới thẻ cuộn mượt mà
-  /// - Loại bỏ hoàn toàn khoảng trống thừa mảng bên phải, tạo bố cục cân đối như Apple TV+
+  /// Cột bên phải dành riêng cho Phim lẻ:
+  /// 1. Trọn bộ sưu tập (nếu có)
+  /// 2. Lưới 3 cột Phim tương tự & Đề xuất (TMDb Smart Match)
   Widget _buildSingleMovieRightPanel(MovieDetail movie) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.30),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Trọn bộ sưu tập Franchise nếu có
           if (movie.collectionId != null) ...[
             CollectionWidget(
               collectionId: movie.collectionId!,
               collectionName: movie.collectionName ?? '',
               currentMovieSlug: movie.slug,
+              currentTmdbId: movie.tmdbId,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
           ],
-
-          // 2. Header Phim tương tự & Đề xuất (TMDb Smart Match)
           Row(
             children: [
-              const Text(
-                'Phim tương tự & Đề xuất',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
-                ),
-              ),
+              const Icon(Icons.auto_awesome_rounded, color: AppColors.primaryLight, size: 16),
+              const SizedBox(width: 6),
+              Text('Phim tương tự & Đề xuất', style: AppTypography.titleMedium),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF01B4E4).withValues(alpha: 0.18),
+                  color: AppColors.primaryMuted,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0xFF01B4E4).withValues(alpha: 0.45), width: 0.8),
+                  border: Border.all(color: AppColors.primaryBorder, width: 0.8),
                 ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.auto_awesome_rounded, color: Color(0xFF01B4E4), size: 11),
-                    SizedBox(width: 3),
-                    Text(
-                      'TMDb Smart Match',
-                      style: TextStyle(
-                        color: Color(0xFF01B4E4),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'TMDb Smart Match',
+                  style: AppTypography.badge.copyWith(color: AppColors.primaryLight, fontSize: 10),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-
-          // 3. Lưới các phim tương tự (Scrollable Responsive Grid 3 cột)
           Expanded(
             child: Consumer(
               builder: (context, ref, _) {
@@ -1461,10 +1386,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   data: (movies) {
                     final filtered = movies.where((m) => m.slug != movie.slug).toList();
                     if (filtered.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Text(
                           'Đang cập nhật đề xuất phù hợp...',
-                          style: TextStyle(color: Colors.white38, fontSize: 13),
+                          style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
                         ),
                       );
                     }
@@ -1472,9 +1397,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                       physics: const BouncingScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
                         childAspectRatio: 0.60,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
                       ),
                       itemCount: filtered.length,
                       itemBuilder: (context, idx) {
@@ -1484,91 +1409,108 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => MovieDetailScreen(slug: item.slug),
+                                builder: (context) => MovieDetailScreen(
+                                  slug: item.slug,
+                                  tmdbId: item.tmdbId,
+                                  tmdbMediaType: item.tmdbMediaType,
+                                  previewMovie: item,
+                                ),
                               ),
                             );
                           },
-                          borderRadius: BorderRadius.circular(8),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                CachedPosterImage(
-                                  imageUrl: item.fullPosterUrl,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: 200,
-                                  memCacheHeight: 300,
-                                ),
-                                Positioned(
-                                  top: 5,
-                                  left: 5,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.70),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Text(
-                                      item.quality.isNotEmpty ? item.quality : 'HD',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 0.8),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(9),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CachedPosterImage(
+                                    imageUrl: item.fullPosterUrl,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 260,
+                                    memCacheHeight: 390,
+                                  ),
+                                  Positioned.fill(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.black.withValues(alpha: 0.85),
+                                          ],
+                                          stops: const [0.55, 1.0],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.fromLTRB(6, 12, 6, 6),
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
-                                        colors: [Color(0xF0000000), Colors.transparent],
+                                  if (item.quality.isNotEmpty)
+                                    Positioned(
+                                      top: 6,
+                                      right: 6,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.72),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          item.quality,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
                                     ),
+                                  Positioned(
+                                    left: 8,
+                                    right: 8,
+                                    bottom: 8,
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
                                           item.name,
-                                          maxLines: 1,
+                                          maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
+                                          style: AppTypography.bodySmall.copyWith(
                                             color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.2,
                                           ),
                                         ),
-                                        if (item.year > 0) ...[
-                                          const SizedBox(height: 1),
+                                        if (item.year > 0)
                                           Text(
                                             '${item.year}',
-                                            style: const TextStyle(
-                                              fontSize: 9.5,
-                                              color: Colors.white60,
+                                            style: AppTypography.labelSmall.copyWith(
+                                              color: AppColors.textMuted,
+                                              fontSize: 10.5,
                                             ),
                                           ),
-                                        ],
                                       ],
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+                  loading: () => const PosterGridSkeleton(
+                    itemCount: 6,
+                    crossAxisCount: 3,
+                    childAspectRatio: 0.60,
                   ),
                   error: (_, __) => const SizedBox.shrink(),
                 );
@@ -2363,19 +2305,19 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF01B4E4).withValues(alpha: 0.18),
+                  color: AppColors.primaryMuted,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0xFF01B4E4).withValues(alpha: 0.45), width: 0.8),
+                  border: Border.all(color: AppColors.primaryBorder, width: 0.8),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.auto_awesome_rounded, color: Color(0xFF01B4E4), size: 12),
+                    Icon(Icons.auto_awesome_rounded, color: AppColors.primaryLight, size: 12),
                     SizedBox(width: 4),
                     Text(
                       'TMDb Smart Match',
                       style: TextStyle(
-                        color: Color(0xFF01B4E4),
+                        color: AppColors.primaryLight,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -2414,7 +2356,12 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => MovieDetailScreen(slug: item.slug),
+                            builder: (context) => MovieDetailScreen(
+                              slug: item.slug,
+                              tmdbId: item.tmdbId,
+                              tmdbMediaType: item.tmdbMediaType,
+                              previewMovie: item,
+                            ),
                           ),
                         );
                       },
@@ -2471,8 +2418,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   },
                 );
               },
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.primary),
+              loading: () => const PosterGridSkeleton(
+                crossAxisCount: 5,
+                itemCount: 10,
+                childAspectRatio: 0.58,
               ),
               error: (_, __) => const Center(
                 child: Text('Không thể tải phim tương tự.', style: TextStyle(color: AppColors.textSecondary)),
@@ -2544,10 +2493,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                           decoration: BoxDecoration(
-                            color: activeTab == 1 ? const Color(0xFF01B4E4) : Colors.white.withValues(alpha: 0.08),
+                            color: activeTab == 1 ? AppColors.primary : AppColors.surfaceLight,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: activeTab == 1 ? const Color(0xFF01B4E4) : Colors.white12,
+                              color: activeTab == 1 ? AppColors.primary : AppColors.borderSubtle,
                               width: 0.8,
                             ),
                           ),
@@ -2557,7 +2506,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                               Icon(
                                 Icons.star_rounded,
                                 size: 14,
-                                color: activeTab == 1 ? Colors.white : const Color(0xFF01B4E4),
+                                color: activeTab == 1 ? Colors.white : AppColors.star,
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -2609,7 +2558,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 22),
+            PopIconSwitch(
+              child: Icon(icon, key: ValueKey(icon), color: color, size: 22),
+            ),
             const SizedBox(height: 4),
             Text(
               label,
@@ -2629,6 +2580,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   Widget _buildPrimaryPlayButton({
     required String label,
     required VoidCallback onTap,
+    bool available = true,
   }) {
     return TVFocusable(
       autoFocus: true,
@@ -2638,26 +2590,33 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.primary,
+          color: available ? AppColors.primary : const Color(0xFF282B34),
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          border: available ? null : Border.all(color: Colors.white24, width: 1),
+          boxShadow: available
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
         ),
         alignment: Alignment.center,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+            Icon(
+              available ? Icons.play_arrow_rounded : Icons.schedule_rounded,
+              color: available ? Colors.white : Colors.white70,
+              size: 22,
+            ),
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: available ? Colors.white : Colors.white70,
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
                 letterSpacing: -0.2,
@@ -2669,73 +2628,80 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     );
   }
 
-  /// Nút phụ hàng ngang (Phim tương tự & Bình luận) gọn gàng, tinh tế
-  Widget _buildSecondaryActionButton({
+  Widget _buildCircleActionButton({
     required IconData icon,
-    required String label,
+    required String tooltip,
     required VoidCallback onTap,
+    Color? color,
   }) {
-    return TVFocusable(
-      showBorder: false,
-      scale: 1.02,
-      onPressed: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 16),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+    final activeColor = color ?? Colors.white;
+    return Tooltip(
+      message: tooltip,
+      child: TVFocusable(
+        showBorder: false,
+        scale: 1.05,
+        onPressed: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.14),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: color == AppColors.primary ? AppColors.primary : Colors.white30,
+              width: 1,
             ),
-          ],
+          ),
+          alignment: Alignment.center,
+          child: PopIconSwitch(
+            child: Icon(icon, key: ValueKey(icon), color: activeColor, size: 17),
+          ),
         ),
       ),
     );
   }
 
-  /// Nút tròn nhỏ hành động (Bookmark / Like / Share) chuẩn Apple TV
-  Widget _buildCircleActionButton({
+  Widget _buildSecondaryActionButton({
     required IconData icon,
-    required Color color,
+    required String label,
     required VoidCallback onTap,
+    Color? color,
   }) {
+    final activeColor = color ?? Colors.white;
     return TVFocusable(
+      showBorder: false,
+      scale: 1.03,
       onPressed: onTap,
-      borderRadius: BorderRadius.circular(19),
-      scale: 1.08,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 38,
         height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: color == AppColors.primary ? AppColors.primary : Colors.white30,
             width: 1,
           ),
         ),
-        child: Icon(icon, color: color, size: 19),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PopIconSwitch(
+              child: Icon(icon, key: ValueKey(icon), color: activeColor, size: 16),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: activeColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

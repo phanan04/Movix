@@ -54,14 +54,14 @@ class _TrendingHubWidgetState extends ConsumerState<TrendingHubWidget> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF01B4E4).withValues(alpha: 0.18),
+                  color: AppColors.primaryMuted,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0xFF01B4E4).withValues(alpha: 0.45), width: 0.8),
+                  border: Border.all(color: AppColors.primaryBorder, width: 0.8),
                 ),
                 child: const Text(
                   'TMDb',
                   style: TextStyle(
-                    color: Color(0xFF01B4E4),
+                    color: AppColors.primaryLight,
                     fontSize: 9.5,
                     fontWeight: FontWeight.bold,
                   ),
@@ -194,7 +194,12 @@ class _TrendingHubWidgetState extends ConsumerState<TrendingHubWidget> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => MovieDetailScreen(slug: movie.slug),
+                      builder: (context) => MovieDetailScreen(
+                        slug: movie.slug,
+                        tmdbId: movie.tmdbId,
+                        tmdbMediaType: movie.tmdbMediaType,
+                        previewMovie: movie,
+                      ),
                     ),
                   );
                 },

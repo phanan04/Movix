@@ -886,7 +886,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             if (!hasMore && movies.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 90),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 110),
                   child: Column(
                     children: [
                       Row(
@@ -945,7 +945,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 : (constraints.maxWidth >= 480 ? 3 : 2));
 
         return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,

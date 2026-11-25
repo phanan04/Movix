@@ -8,8 +8,13 @@ import '../../movie_detail/movie_detail_screen.dart';
 
 class HeroBanner extends StatefulWidget {
   final MovieItem? movie;
+  final bool hasOverlayRail;
 
-  const HeroBanner({super.key, this.movie});
+  const HeroBanner({
+    super.key,
+    this.movie,
+    this.hasOverlayRail = false,
+  });
 
   @override
   State<HeroBanner> createState() => _HeroBannerState();
@@ -30,7 +35,9 @@ class _HeroBannerState extends State<HeroBanner> {
     // Trên điện thoại xoay ngang (iPhone 16 landscape ~852x393), ưu tiên chiều cao 320-360px để không cấn chữ
     final bannerHeight = isShortLandscape
         ? (screenHeight * 0.88).clamp(320.0, 380.0)
-        : (isWide ? (screenHeight * 0.56).clamp(420.0, 600.0) : screenHeight * 0.48);
+        : (isWide
+            ? (screenHeight * 0.56).clamp(420.0, 600.0)
+            : (screenHeight * 0.54).clamp(420.0, 540.0));
 
     final double btnHeight = isShortLandscape ? 36.0 : (isWide ? 42.0 : 40.0);
     const double btnRadius = 8.0;
@@ -100,7 +107,9 @@ class _HeroBannerState extends State<HeroBanner> {
 
             // 5. Bottom Content (Title, Metadata, Netflix Action Buttons)
             Positioned(
-              left: isWide ? (isShortLandscape ? 24 : 48) : 16,
+              left: widget.hasOverlayRail
+                  ? 84
+                  : (isWide ? (isShortLandscape ? 24 : 48) : 16),
               right: isWide ? screenWidth * 0.40 : 16,
               bottom: isShortLandscape ? 12 : 24,
               child: Column(
@@ -189,7 +198,12 @@ class _HeroBannerState extends State<HeroBanner> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => MovieDetailScreen(slug: movie.slug),
+                              builder: (context) => MovieDetailScreen(
+                                slug: movie.slug,
+                                tmdbId: movie.tmdbId,
+                                tmdbMediaType: movie.tmdbMediaType,
+                                previewMovie: movie,
+                              ),
                             ),
                           );
                         },
@@ -236,7 +250,12 @@ class _HeroBannerState extends State<HeroBanner> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => MovieDetailScreen(slug: movie.slug),
+                              builder: (context) => MovieDetailScreen(
+                                slug: movie.slug,
+                                tmdbId: movie.tmdbId,
+                                tmdbMediaType: movie.tmdbMediaType,
+                                previewMovie: movie,
+                              ),
                             ),
                           );
                         },
@@ -279,7 +298,7 @@ class _HeroBannerState extends State<HeroBanner> {
                       ValueListenableBuilder<List<MovieItem>>(
                         valueListenable: _userStorage.myListNotifier,
                         builder: (context, _, __) {
-                          final inList = _userStorage.isInMyList(movie.slug);
+                          final inList = _userStorage.isInMyList(movie.slug, tmdbId: movie.tmdbId);
                           return TVFocusable(
                             onPressed: () {
                               _userStorage.toggleMyList(movie);
@@ -306,10 +325,13 @@ class _HeroBannerState extends State<HeroBanner> {
                                     ? Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(
-                                            inList ? Icons.check_rounded : Icons.add_rounded,
-                                            color: inList ? AppColors.primary : AppColors.textPrimary,
-                                            size: 18,
+                                          PopIconSwitch(
+                                            child: Icon(
+                                              inList ? Icons.check_rounded : Icons.add_rounded,
+                                              key: ValueKey(inList),
+                                              color: inList ? AppColors.primary : AppColors.textPrimary,
+                                              size: 18,
+                                            ),
                                           ),
                                           const SizedBox(width: 5),
                                           Text(
@@ -322,10 +344,13 @@ class _HeroBannerState extends State<HeroBanner> {
                                           ),
                                         ],
                                       )
-                                    : Icon(
-                                        inList ? Icons.check_rounded : Icons.add_rounded,
-                                        color: inList ? AppColors.primary : AppColors.textPrimary,
-                                        size: 20,
+                                    : PopIconSwitch(
+                                        child: Icon(
+                                          inList ? Icons.check_rounded : Icons.add_rounded,
+                                          key: ValueKey(inList),
+                                          color: inList ? AppColors.primary : AppColors.textPrimary,
+                                          size: 20,
+                                        ),
                                       ),
                               ),
                             ),

@@ -4,9 +4,9 @@ import '../../../core/models/movie_model.dart';
 import '../../../core/services/tmdb_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/movie_providers.dart';
-import '../../widgets/app_toast.dart';
 import '../../widgets/cached_poster_image.dart';
 import '../../widgets/movie_card.dart';
+import '../../widgets/shimmer_loading.dart';
 import '../../widgets/tv_focusable.dart';
 import '../movie_detail/movie_detail_screen.dart';
 
@@ -29,42 +29,36 @@ class ActorProfileScreen extends ConsumerStatefulWidget {
 class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
   bool _isBioExpanded = false;
 
-  void _openMovie(TmdbPersonCredit credit) async {
-    final api = ref.read(apiServiceProvider);
-    AppToast.show(context, 'Đang mở phim ${credit.title}...', icon: Icons.movie_outlined);
-    try {
-      final searchRes = await api.searchMovies(credit.title, limit: 1);
-      if (!mounted) return;
-      if (searchRes.isNotEmpty) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MovieDetailScreen(slug: searchRes.first.slug),
-          ),
-        );
-        return;
-      }
-
-      if (credit.originalTitle != null && credit.originalTitle!.isNotEmpty) {
-        final origRes = await api.searchMovies(credit.originalTitle!, limit: 1);
-        if (!mounted) return;
-        if (origRes.isNotEmpty) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MovieDetailScreen(slug: origRes.first.slug),
-            ),
-          );
-          return;
-        }
-      }
-
-      if (!mounted) return;
-      AppToast.show(context, 'Phim "${credit.title}" chưa có bản chiếu', icon: Icons.info_outline);
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, 'Không thể tải phim này', icon: Icons.error_outline);
-    }
+  void _openMovie(TmdbPersonCredit credit) {
+    final year = credit.releaseDate != null && credit.releaseDate!.length >= 4
+        ? (int.tryParse(credit.releaseDate!.substring(0, 4)) ?? 0)
+        : 0;
+    final preview = MovieItem(
+      id: credit.id.toString(),
+      name: credit.title,
+      originName: credit.originalTitle ?? credit.title,
+      slug: 'tmdb-${credit.id}',
+      thumbUrl: credit.posterUrl ?? '',
+      posterUrl: credit.posterUrl ?? '',
+      year: year,
+      episodeCurrent: credit.mediaType == 'tv' ? 'Series' : 'Full',
+      quality: credit.voteAverage > 0 ? '${credit.voteAverage.toStringAsFixed(1)} ★' : 'FHD',
+      lang: 'Quốc Tế',
+      voteAverage: credit.voteAverage,
+      tmdbId: credit.id,
+      tmdbMediaType: credit.mediaType,
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailScreen(
+          slug: preview.slug,
+          tmdbId: credit.id,
+          tmdbMediaType: credit.mediaType,
+          previewMovie: preview,
+        ),
+      ),
+    );
   }
 
   @override
@@ -143,7 +137,12 @@ class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
                           ),
                           child: ClipOval(
                             child: profile != null
-                                ? CachedPosterImage(imageUrl: profile, fit: BoxFit.cover)
+                                ? CachedPosterImage(
+                                    imageUrl: profile,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 250,
+                                    memCacheHeight: 250,
+                                  )
                                 : Container(
                                     color: const Color(0xFF232530),
                                     child: Center(
@@ -211,8 +210,16 @@ class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
                   );
                 },
                 loading: () => const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    children: [
+                      ShimmerSkeleton(width: 124, height: 124, borderRadius: 62),
+                      SizedBox(height: 14),
+                      ShimmerSkeleton(width: 180, height: 22, borderRadius: 8),
+                      SizedBox(height: 10),
+                      ShimmerSkeleton(width: double.infinity, height: 64, borderRadius: 10),
+                    ],
+                  ),
                 ),
                 error: (_, __) => const SizedBox.shrink(),
               ),
@@ -275,7 +282,14 @@ class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
                                 onPressed: () {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => MovieDetailScreen(slug: item.slug)),
+                                    MaterialPageRoute(
+                                      builder: (context) => MovieDetailScreen(
+                                        slug: item.slug,
+                                        tmdbId: item.tmdbId,
+                                        tmdbMediaType: item.tmdbMediaType,
+                                        previewMovie: item,
+                                      ),
+                                    ),
                                   );
                                 },
                                 borderRadius: BorderRadius.circular(10),
@@ -317,6 +331,8 @@ class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
                                         CachedPosterImage(
                                           imageUrl: credit.posterUrl!,
                                           fit: BoxFit.cover,
+                                          memCacheWidth: 260,
+                                          memCacheHeight: 380,
                                         )
                                       else
                                         Container(
@@ -385,9 +401,11 @@ class _ActorProfileScreenState extends ConsumerState<ActorProfileScreen> {
                 );
               },
               loading: () => const SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 200,
-                  child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                child: PosterGridSkeleton(
+                  crossAxisCount: 3,
+                  itemCount: 6,
+                  childAspectRatio: 0.58,
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                 ),
               ),
               error: (_, __) => const SliverToBoxAdapter(

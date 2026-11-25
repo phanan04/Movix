@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/models/movie_model.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
 import 'cached_poster_image.dart';
 import 'rating_badge.dart';
 import 'tv_focusable.dart';
@@ -22,13 +23,21 @@ class MovieCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final heroTag = 'movie_card_${movie.slug}_${identityHashCode(this)}';
+
     return RepaintBoundary(
       child: TVFocusable(
         onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => MovieDetailScreen(slug: movie.slug),
+              builder: (context) => MovieDetailScreen(
+                slug: movie.slug,
+                tmdbId: movie.tmdbId,
+                tmdbMediaType: movie.tmdbMediaType,
+                previewMovie: movie,
+                heroTag: heroTag,
+              ),
             ),
           );
         },
@@ -42,12 +51,17 @@ class MovieCard extends StatelessWidget {
               // Poster Container
               Stack(
                 children: [
-                  CachedPosterImage(
-                    imageUrl: movie.fullPosterUrl,
-                    width: width,
-                    height: height,
-                    fit: BoxFit.cover,
-                    borderRadius: BorderRadius.circular(14),
+                  Hero(
+                    tag: heroTag,
+                    child: CachedPosterImage(
+                      imageUrl: movie.fullPosterUrl,
+                      width: width,
+                      height: height,
+                      fit: BoxFit.cover,
+                      memCacheWidth: (width * 2).round(),
+                      memCacheHeight: (height * 2).round(),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   // Rating / Status Badge (top-left)
                   Positioned(
@@ -76,11 +90,7 @@ class MovieCard extends StatelessWidget {
                 movie.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+                style: AppTypography.titleSmall.copyWith(fontSize: 13),
               ),
               const SizedBox(height: 2),
               // Episode or subtitle
@@ -90,10 +100,7 @@ class MovieCard extends StatelessWidget {
                     : (movie.categoryNames.isNotEmpty ? movie.categoryNames.first : movie.originName),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppTypography.labelSmall.copyWith(color: AppColors.textSecondary, fontWeight: FontWeight.w400),
               ),
             ],
           ),
@@ -110,13 +117,21 @@ class GridMovieCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final heroTag = 'grid_card_${movie.slug}_${identityHashCode(this)}';
+
     return RepaintBoundary(
-      child: GestureDetector(
+      child: PressScale(
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => MovieDetailScreen(slug: movie.slug),
+              builder: (context) => MovieDetailScreen(
+                slug: movie.slug,
+                tmdbId: movie.tmdbId,
+                tmdbMediaType: movie.tmdbMediaType,
+                previewMovie: movie,
+                heroTag: heroTag,
+              ),
             ),
           );
         },
@@ -128,10 +143,15 @@ class GridMovieCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CachedPosterImage(
-                    imageUrl: movie.fullPosterUrl,
-                    fit: BoxFit.cover,
-                    borderRadius: BorderRadius.circular(16),
+                  Hero(
+                    tag: heroTag,
+                    child: CachedPosterImage(
+                      imageUrl: movie.fullPosterUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 320,
+                      memCacheHeight: 460,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   // Rating / Quality Badge (top-left)
                   Positioned(

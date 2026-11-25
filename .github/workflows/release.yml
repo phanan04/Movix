@@ -145,13 +145,14 @@ jobs:
             ---
             
             ### ✨ Những điểm mới & Cải tiến trong bản ${{ steps.version_info.outputs.tag_name }}:
+            - **Thanh điều hướng nổi dạng viên thuốc (Floating Pill Bottom Bar)**: Thiết kế capsule lơ lửng phong cách iOS hiện đại với hiệu ứng kính mờ (Liquid Frosted Glass), active pill phát sáng và phản hồi rung xúc giác.
+            - **Top Bar trong suốt đè lên Hero Banner (Mobile)**: Thanh tiêu đề trên mobile tràn viền hoàn toàn trong suốt đè lên ảnh nền Hero sắc nét kèm nút tìm kiếm và thông báo hình tròn kính mờ.
+            - **Rail điều hướng trong suốt Tablet / Desktop**: Thanh rail bên trái chỉ icon lơ lửng trên ảnh nền Hero Banner, tối đa hóa không gian trải nghiệm phim.
+            - **Chọn nhiều mục trong Danh sách & Lịch sử (Multi-select)**: Nhấn giữ để kích hoạt chế độ chọn 1, nhiều hoặc tất cả, xóa hàng loạt và tự động đồng bộ đám mây.
+            - **Hiệu ứng & Tối ưu UX/UI toàn diện**: Skeleton shimmer, ảnh fade-in mượt, hiệu ứng nhấn co giãn (Press Scale 0.96), chuyển tab mượt mà, Hero transitions poster sang chi tiết.
+            - **Chuẩn hóa Design System**: Đồng bộ màu đỏ thương hiệu Movix Red `#E50914`, kiểu chữ `Be Vietnam Pro` và loại bỏ hoàn toàn các màu không khớp chuẩn.
+            - **Tối ưu hiệu năng & Bộ nhớ**: Tối ưu bộ nhớ đệm hình ảnh (memCache), giải phóng providers tự động (autoDispose), giảm tải CPU trình phát video.
             - **Chuyển đổi nguồn dữ liệu TMDb / KKPhim**: Chuyển đổi linh hoạt giữa kho phim Quốc tế TMDb và kho phim Vietsub KKPhim ngay tại Logo với giao diện tối giản.
-            - **Bộ lọc tìm kiếm thông minh đa chiều**: Tự động chuyển đổi bộ lọc tương ứng với nguồn phim (TMDb hỗ trợ thể loại, ngôn ngữ, năm phát hành, điểm đánh giá, sắp xếp).
-            - **Đồng bộ hóa trải nghiệm**: Tiếp tục xem chung giữa 2 nguồn, Banner tự động cập nhật theo ngữ cảnh.
-            - **Khắc phục lỗi bắt nhầm phim & diễn viên TMDB**: Bổ sung bộ lọc đối chiếu chéo (Cross-Validation) giữa diễn viên gốc và diễn viên TMDB.
-            - **Giao diện Diễn viên & Vai diễn thiết kế mới**: Hiển thị dàn diễn viên Việt Nam sang trọng dưới dạng thẻ điện ảnh kèm biểu trưng Avatar chữ lồng (Monogram).
-            - **Chuẩn hóa tỷ lệ khung hình & Bố cục ảnh nền**: Khắc phục hiện tượng ảnh bị méo/co trên một số thiết bị; tối ưu khoảng trống và phủ gradient tương phản cao.
-            - **Tối ưu máy chủ nội bộ**: Hỗ trợ lắng nghe trên `0.0.0.0` tương thích hoàn toàn với cả IPv4 và IPv6 (localhost).
           draft: false
           prerelease: false
           generate_release_notes: false

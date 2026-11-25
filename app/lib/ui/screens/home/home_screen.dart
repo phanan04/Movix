@@ -15,11 +15,13 @@ import 'widgets/movie_carousel.dart';
 class HomeScreen extends ConsumerStatefulWidget {
   final VoidCallback? onSearchTap;
   final ScrollController? scrollController;
+  final bool hasOverlayRail;
 
   const HomeScreen({
     super.key,
     this.onSearchTap,
     this.scrollController,
+    this.hasOverlayRail = false,
   });
 
   @override
@@ -33,40 +35,91 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isTabletLandscape = width >= 600;
 
     final currentMode = ref.watch(appSourceModeProvider);
-    final tmdbTrendingAsync = ref.watch(trendingCategoryMoviesProvider(TrendingHubCategory.allWeek));
-    final newUpdatesAsync = ref.watch(newUpdatesProvider);
-    final topTenAsync = ref.watch(topTenMoviesProvider);
-    final seriesAsync = ref.watch(seriesMoviesProvider);
-    final singleAsync = ref.watch(singleMoviesProvider);
-    final animeAsync = ref.watch(animeMoviesProvider);
-    final tvShowsAsync = ref.watch(tvShowsMoviesProvider);
+    final tmdbTrendingAsync = currentMode == AppSourceMode.tmdb
+        ? ref.watch(trendingCategoryMoviesProvider(TrendingHubCategory.allWeek))
+        : null;
+    final newUpdatesAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(newUpdatesProvider)
+        : null;
+    final topTenAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(topTenMoviesProvider)
+        : null;
+    final seriesAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(seriesMoviesProvider)
+        : null;
+    final singleAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(singleMoviesProvider)
+        : null;
+    final animeAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(animeMoviesProvider)
+        : null;
+    final tvShowsAsync = currentMode == AppSourceMode.kkphim
+        ? ref.watch(tvShowsMoviesProvider)
+        : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      extendBodyBehindAppBar: !isTabletLandscape,
       appBar: !isTabletLandscape
           ? AppBar(
-              backgroundColor: AppColors.background,
+              backgroundColor: Colors.transparent,
               elevation: 0,
+              scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               titleSpacing: 16,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.75),
+                      Colors.black.withValues(alpha: 0.25),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.7, 1.0],
+                  ),
+                ),
+              ),
               title: _buildMobileSourceSwitcher(currentMode),
               actions: [
-                IconButton(
-                  tooltip: 'Tìm kiếm',
-                  onPressed: widget.onSearchTap,
-                  icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                ),
-                IconButton(
-                  tooltip: 'Thông báo',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const NotificationScreen()),
-                    );
-                  },
-                  icon: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 24),
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.8),
+                  ),
+                  child: IconButton(
+                    tooltip: 'Tìm kiếm',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    onPressed: widget.onSearchTap,
+                    icon: const Icon(Icons.search, color: Colors.white, size: 20),
+                  ),
                 ),
                 const SizedBox(width: 8),
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.8),
+                  ),
+                  child: IconButton(
+                    tooltip: 'Thông báo',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const NotificationScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 20),
+                  ),
+                ),
+                const SizedBox(width: 14),
               ],
             )
           : null,
@@ -83,16 +136,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ref.invalidate(animeMoviesProvider);
           ref.invalidate(tvShowsMoviesProvider);
         },
-        child: CustomScrollView(
-          controller: widget.scrollController,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
+        child: MediaQuery.removePadding(
+          context: context,
+          removeTop: !isTabletLandscape,
+          child: CustomScrollView(
+            controller: widget.scrollController,
+            physics: const BouncingScrollPhysics(),
+            slivers: [
             // 1. Hero Banner phù hợp với Nguồn đang chọn (TMDb / KKPhim)
             SliverToBoxAdapter(
               child: currentMode == AppSourceMode.tmdb
-                  ? tmdbTrendingAsync.when(
+                  ? tmdbTrendingAsync!.when(
                       data: (movies) => HeroBanner(
                         movie: movies.isNotEmpty ? movies.first : null,
+                        hasOverlayRail: widget.hasOverlayRail,
                       ),
                       loading: () => ShimmerSkeleton(
                         width: double.infinity,
@@ -101,9 +158,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       error: (_, __) => SizedBox(height: MediaQuery.of(context).size.height * 0.48),
                     )
-                  : newUpdatesAsync.when(
+                  : newUpdatesAsync!.when(
                       data: (movies) => HeroBanner(
                         movie: movies.isNotEmpty ? movies.first : null,
+                        hasOverlayRail: widget.hasOverlayRail,
                       ),
                       loading: () => ShimmerSkeleton(
                         width: double.infinity,
@@ -114,144 +172,127 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 14)),
+            SliverPadding(
+              padding: EdgeInsets.only(left: widget.hasOverlayRail ? 64 : 0),
+              sliver: SliverList.list(
+                children: [
+                  const SizedBox(height: 14),
 
-            // 2. Tiếp tục xem (Dùng chung cho cả 2 chế độ TMDb và KKPhim)
-            const SliverToBoxAdapter(
-              child: ContinueWatchingCarousel(),
+                  // 2. Tiếp tục xem (Dùng chung cho cả 2 chế độ TMDb và KKPhim)
+                  const ContinueWatchingCarousel(),
+
+                  const SizedBox(height: 18),
+
+                  // 3. Nội dung danh mục hiển thị theo Chế độ Nguồn được chọn:
+                  if (currentMode == AppSourceMode.tmdb) ...[
+                    // ==========================================
+                    // CHUYÊN TRANG TMDb BOM TẤN QUỐC TẾ (ĐẦY ĐỦ 5 HÀNG)
+                    // ==========================================
+                    _buildTrendingMovieSection(
+                      title: 'Xu Hướng Toàn Cầu Tuần Này',
+                      category: TrendingHubCategory.allWeek,
+                      skipFirst: true,
+                    ),
+                    const SizedBox(height: 20),
+
+                    _buildTrendingMovieSection(
+                      title: 'Bom Tấn Điện Ảnh Quốc Tế',
+                      category: TrendingHubCategory.movies,
+                    ),
+                    const SizedBox(height: 20),
+
+                    _buildTrendingMovieSection(
+                      title: 'Series Truyền Hình Quốc Tế',
+                      category: TrendingHubCategory.series,
+                    ),
+                    const SizedBox(height: 20),
+
+                    _buildTrendingMovieSection(
+                      title: 'Gây Sốt Trong 24 Giờ Qua',
+                      category: TrendingHubCategory.allDay,
+                    ),
+                    const SizedBox(height: 20),
+
+                    _buildTrendingPersonsSection(),
+                    const SizedBox(height: 20),
+                  ] else ...[
+                    // ==========================================
+                    // CHUYÊN TRANG KKPHIM VIETSUB & CHÂU Á (ĐẦY ĐỦ 6 HÀNG)
+                    // ==========================================
+                    newUpdatesAsync!.when(
+                      data: (movies) => MovieCarouselSection(
+                        title: 'Phim Mới Cập Nhật',
+                        movies: movies.skip(1).toList(),
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    topTenAsync!.when(
+                      data: (movies) => TopTenCarousel(
+                        movies: movies,
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    seriesAsync!.when(
+                      data: (movies) => MovieCarouselSection(
+                        title: 'Phim Bộ Đang Hot',
+                        movies: movies,
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    singleAsync!.when(
+                      data: (movies) => MovieCarouselSection(
+                        title: 'Phim Lẻ Thịnh Hành',
+                        movies: movies,
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    animeAsync!.when(
+                      data: (movies) => MovieCarouselSection(
+                        title: 'Anime & Hoạt Hình',
+                        movies: movies,
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    tvShowsAsync!.when(
+                      data: (movies) => MovieCarouselSection(
+                        title: 'TV Shows & Gameshow',
+                        movies: movies,
+                        onSeeAll: widget.onSearchTap,
+                      ),
+                      loading: () => const MovieCarouselSkeleton(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  const SizedBox(height: 110), // Bottom padding for floating pill bar
+                ],
+              ),
             ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 18)),
-
-            // 3. Nội dung danh mục hiển thị theo Chế độ Nguồn được chọn:
-            if (currentMode == AppSourceMode.tmdb) ...[
-              // ==========================================
-              // CHUYÊN TRANG TMDb BOM TẤN QUỐC TẾ (ĐẦY ĐỦ 5 HÀNG)
-              // ==========================================
-              SliverToBoxAdapter(
-                child: _buildTrendingMovieSection(
-                  title: 'Xu Hướng Toàn Cầu Tuần Này',
-                  category: TrendingHubCategory.allWeek,
-                  skipFirst: true,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: _buildTrendingMovieSection(
-                  title: 'Bom Tấn Điện Ảnh Quốc Tế',
-                  category: TrendingHubCategory.movies,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: _buildTrendingMovieSection(
-                  title: 'Series Truyền Hình Quốc Tế',
-                  category: TrendingHubCategory.series,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: _buildTrendingMovieSection(
-                  title: 'Gây Sốt Trong 24 Giờ Qua',
-                  category: TrendingHubCategory.allDay,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: _buildTrendingPersonsSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-            ] else ...[
-              // ==========================================
-              // CHUYÊN TRANG KKPHIM VIETSUB & CHÂU Á (ĐẦY ĐỦ 6 HÀNG)
-              // ==========================================
-              SliverToBoxAdapter(
-                child: newUpdatesAsync.when(
-                  data: (movies) => MovieCarouselSection(
-                    title: 'Phim Mới Cập Nhật',
-                    movies: movies.skip(1).toList(),
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: topTenAsync.when(
-                  data: (movies) => TopTenCarousel(
-                    movies: movies,
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: seriesAsync.when(
-                  data: (movies) => MovieCarouselSection(
-                    title: 'Phim Bộ Đang Hot',
-                    movies: movies,
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: singleAsync.when(
-                  data: (movies) => MovieCarouselSection(
-                    title: 'Phim Lẻ Thịnh Hành',
-                    movies: movies,
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: animeAsync.when(
-                  data: (movies) => MovieCarouselSection(
-                    title: 'Anime & Hoạt Hình',
-                    movies: movies,
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              SliverToBoxAdapter(
-                child: tvShowsAsync.when(
-                  data: (movies) => MovieCarouselSection(
-                    title: 'TV Shows & Gameshow',
-                    movies: movies,
-                    onSeeAll: widget.onSearchTap,
-                  ),
-                  loading: () => const MovieCarouselSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            ],
-
-            const SliverToBoxAdapter(child: SizedBox(height: 90)), // Bottom padding
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -325,13 +366,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          const Text(
-            'Movix',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-              letterSpacing: -0.5,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.40),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  currentMode == AppSourceMode.tmdb ? 'TMDb' : 'KKPhim',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 16),
+              ],
             ),
           ),
         ],

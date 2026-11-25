@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/models/movie_model.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
 import '../../../widgets/movie_card.dart';
 import '../../../widgets/tv_focusable.dart';
 
@@ -75,12 +76,7 @@ class MovieCarouselSection extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.3,
-                ),
+                style: AppTypography.sectionTitle,
               ),
               if (!isWide && onSeeAll != null)
                 GestureDetector(

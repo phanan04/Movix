@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/movie_providers.dart';
 import '../../widgets/cached_poster_image.dart';
+import '../../widgets/shimmer_loading.dart';
 import '../movie_detail/movie_detail_screen.dart';
 
 class NotificationScreen extends ConsumerWidget {
@@ -22,8 +23,10 @@ class NotificationScreen extends ConsumerWidget {
         ),
       ),
       body: newUpdatesAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+        loading: () => const ListSkeleton(
+          itemCount: 5,
+          itemHeight: 88,
+          padding: EdgeInsets.all(16),
         ),
         error: (err, stack) => Center(
           child: Text(
